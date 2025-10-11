@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -7,6 +8,7 @@
 #include <unistd.h>
 
 #include <main.h>
+#include <utils.h>
 
 int main(void) {
   struct addrinfo hints, *out;
@@ -15,10 +17,18 @@ int main(void) {
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  (void)getaddrinfo("::", "8080", &hints, &out);
+  (void)getaddrinfo("::1", "0", &hints, &out);
 
   int server_fd = socket(out->ai_family, out->ai_socktype, out->ai_protocol);
+
+  enqueue_error("socket", strerror(errno));
+
+  print_error_list();
+  free_error_list();
+
   printf("socket: %d\n", server_fd);
+
+  printf("port: %d\n", ntohs(((struct sockaddr_in6 *)out->ai_addr)->sin6_port));
 
   (void)bind(server_fd, out->ai_addr, out->ai_addrlen);
   freeaddrinfo(out);
