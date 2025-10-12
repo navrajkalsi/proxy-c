@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <utils.h>
 
 // error linked list head and tail nodes
@@ -16,6 +17,7 @@ ErrorNode *init_error_node(const char *function, const char *error) {
 
   node->function = function ? strdup(function) : NULL;
   node->error = error ? strdup(error) : NULL;
+  node->time = time(NULL);
   node->next = NULL;
 
   return node;
@@ -42,14 +44,20 @@ void print_error_list(void) {
   if (!error_head)
     return;
 
-  puts("");
-  for (int i = 0; i < TERMINAL_WIDTH; ++i)
-    fputs("~", stderr);
-  fputs("\nError Queue:\n\n", stderr);
+  {
+    fputs("\n", stderr);
+    for (int i = 0; i < TERMINAL_WIDTH; ++i)
+      fputs("~", stderr);
+    fputs("\nError Queue:\n\n", stderr);
+  }
 
   ErrorNode *current = error_head;
   do {
-    fprintf(stderr, "%s()", current->function);
+    struct tm *time = localtime(&current->time);
+
+    // zero padding with fixed width of 2 in time
+    fprintf(stderr, "[%02d:%02d:%02d] %s()", time->tm_hour, time->tm_min,
+            time->tm_sec, current->function);
     if (current->error)
       fprintf(stderr, ": %s\n", current->error);
   } while ((current = current->next));

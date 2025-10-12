@@ -21,7 +21,11 @@ int main(void) {
 
   int server_fd = socket(out->ai_family, out->ai_socktype, out->ai_protocol);
 
+  errno = 14;
   enqueue_error("socket", strerror(errno));
+
+  errno = 19;
+  enqueue_error("bind", strerror(errno));
 
   print_error_list();
   free_error_list();

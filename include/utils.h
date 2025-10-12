@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include <main.h>
+#include <time.h>
 
 // string helper
 typedef struct str {
@@ -14,8 +15,9 @@ typedef struct str {
 // error node, with name of the errored funciton and its error description
 // typically from strerror()
 typedef struct errorNode {
-  char *function;
-  char *error;
+  char *function; // function name that errored
+  char *error;    // error description
+  time_t time;    // time of error
   struct errorNode *next;
 } ErrorNode;
 
