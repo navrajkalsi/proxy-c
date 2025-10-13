@@ -1,3 +1,5 @@
+#include <asm-generic/errno-base.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +40,14 @@ void enqueue_error(const char *function, const char *error) {
     error_head = error_tail = node;
 
   return;
+}
+
+void enqueue_null_error(const char *function) {
+  if (!function)
+    return;
+
+  errno = EFAULT;
+  return enqueue_error(function, strerror(errno));
 }
 
 void print_error_list(void) {
@@ -96,4 +106,9 @@ bool err(const char *error, bool print_errno) {
     fprintf(stderr, "%s\n", error);
 
   return false;
+}
+
+bool null_ptr(const char *error) {
+  errno = EFAULT;
+  return err(error, true);
 }
