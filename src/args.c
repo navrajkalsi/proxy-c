@@ -1,24 +1,23 @@
 #include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
+#include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <args.h>
-#include <main.h>
-#include <utils.h>
+#include "args.h"
+#include "main.h"
+#include "utils.h"
 
 Config parse_args(int argc, char *argv[]) {
-  Config config = {.port = DEFAULT_PORT,
-                   .accept_all = false,
-                   .canonical = DEFAULT_CANONICAL};
+  Config config = {.port = NULL, .accept_all = false, .canonical = NULL};
 
   int arg;
-
   unsigned int args_parsed = 0;
-  while ((arg = getopt(argc, argv, "ac:hp:v") != -1))
+
+  while ((arg = getopt(argc, argv, "ac:hp:v")) != -1)
     switch (arg) {
     case 'a':
       config.accept_all = true;
@@ -26,7 +25,11 @@ Config parse_args(int argc, char *argv[]) {
       break;
     case 'c':
       if (!validate_canonical(optarg)) {
-        err("validate_canonical()", true);
+        enqueue_error("validate_canonical",
+                      errno ? strerror(errno)
+                            : "Invalid canonical name passed");
+        if (config.port)
+          free(config.port);
         exit(EXIT_FAILURE);
       }
       config.canonical = strdup(optarg);
@@ -34,11 +37,16 @@ Config parse_args(int argc, char *argv[]) {
       break;
     case 'h':
       print_usage(argv[0]);
+      if (config.port)
+        free(config.port);
+      if (config.canonical)
+        free(config.canonical);
       exit(EXIT_SUCCESS);
     case 'p':
       if (!validate_port(optarg)) {
         enqueue_error("validate_port", strerror(errno));
-        err("validate_port()", true);
+        if (config.canonical)
+          free(config.canonical);
         exit(EXIT_FAILURE);
       }
       config.port = strdup(optarg);
@@ -50,30 +58,56 @@ Config parse_args(int argc, char *argv[]) {
     case '?': // If an unknown flag or no argument is passed for an option
               // 'optopt' is set to the flag
       if (optopt == 'c')
-        arg_error('c', "requires a valid canonical name");
+        enqueue_error("parse_args",
+                      "Option '-c' requires a valid canonical name");
       else if (optopt == 'p')
-        arg_error('p', "requires a valid port number");
+        enqueue_error("parse_args", "Option '-p' requires a valid port number");
       else if (isprint(optopt))
-        arg_error((char)optopt, "unknown option");
+        enqueue_error("parse_args", "Unknown option");
       else
-        fputs("Unknown option character used!\n", stderr);
+        enqueue_error("parse_args", "Unknown option character used!\n");
       exit(EXIT_FAILURE);
     default:
-      fputs("Unknown error occurred while parsing arguments\n", stderr);
+      enqueue_error("parse_args",
+                    "Unknown error occurred while parsing arguments");
       exit(EXIT_FAILURE);
     }
+
+  // if not set with flag, verifying default
+  if (!config.canonical) {
+    if (!(validate_canonical(DEFAULT_CANONICAL))) {
+      if (config.port)
+        free(config.port);
+      enqueue_error("validate_canonical",
+                    errno ? strerror(errno) : "Invalid canonical name passed");
+      exit(EXIT_FAILURE);
+    }
+    config.canonical = DEFAULT_CANONICAL;
+  }
+  if (!config.port) {
+    if (!(validate_port(DEFAULT_PORT))) {
+      if (config.canonical)
+        free(config.canonical);
+      enqueue_error("validate_port", NULL);
+      exit(EXIT_FAILURE);
+    }
+    config.port = DEFAULT_PORT;
+  }
 
   print_args(args_parsed, &config);
   return config;
 }
 
 void print_usage(const char *prg) {
-  if (!prg) {
-    null_ptr("Invalid program pointer");
-    return;
-  }
-
-  return;
+  printf("\nUsage: %s [OPTIONS] [ARGS...]\n"
+         "Options:\n"
+         "-a             Accept Incoming Connections from all IPs, defaults "
+         "to Localhost only.\n"
+         "-c <canonical> Canonical Name to redirect requests to.\n"
+         "-h             Print this help message.\n"
+         "-p <port>      Port to listen on.\n"
+         "-v             Print the version number.\n",
+         prg);
 }
 
 void print_args(unsigned int args_parsed, const Config *config) {
@@ -82,20 +116,63 @@ void print_args(unsigned int args_parsed, const Config *config) {
     return;
   }
 
-  printf("%d", args_parsed);
+  if (args_parsed)
+    printf("\nParsed %u Argument(s).", args_parsed);
 
-  return;
+  printf("\nCanonical set to: %s\n"
+         "Port set to: %s\n",
+         config->canonical, config->port);
+
+  config->accept_all
+      ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
+      : puts("Proxy Accepting Incoming Connections from Localhost Only.\n");
 }
 
 bool validate_port(char *port) {
-  if (!port)
-    return null_ptr("Invalid port pointer");
-  return false;
+  if (!port) {
+    errno = EFAULT;
+    return false;
+  }
+
+  char *end;
+  const long port_num = strtol(port, &end, 10);
+  if (*end != '\0') {
+    errno = EINVAL; // not a valid number
+    return false;
+  }
+  if (port_num < 0 || port_num > 65535) {
+    errno = ERANGE; // out of range
+    return false;
+  }
+
+  return true;
 }
 
 bool validate_canonical(char *canonical) {
-  if (!canonical)
-    return null_ptr("Invalid canonical pointer");
+  if (!canonical) {
+    errno = EFAULT;
+    return false;
+  }
 
-  return false;
+  regex_t regex;
+  memset(&regex, 0, sizeof regex);
+  int status = 0;
+  char error_string[256];
+
+  if ((status = regcomp(&regex, URL_REGEX,
+                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
+    regerror(status, &regex, error_string, sizeof error_string);
+    enqueue_error("regcomp", error_string);
+    return false;
+  }
+
+  if ((status = regexec(&regex, canonical, 0, NULL, 0)) != 0) {
+    regerror(status, &regex, error_string, sizeof error_string);
+    enqueue_error("regexec", error_string);
+    regfree(&regex);
+    return false;
+  }
+
+  regfree(&regex);
+  return true;
 }

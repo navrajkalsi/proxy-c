@@ -2,9 +2,9 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-
-#include <main.h>
 #include <time.h>
+
+#include "main.h"
 
 // string helper
 typedef struct str {

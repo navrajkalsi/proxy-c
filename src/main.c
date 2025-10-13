@@ -7,10 +7,20 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <main.h>
-#include <utils.h>
+#include "args.h"
+#include "main.h"
+#include "utils.h"
 
-int main(void) {
+int main(int argc, char *argv[]) {
+
+  // atexits
+  {
+    atexit(free_error_list);
+    atexit(print_error_list);
+  }
+
+  Config config = parse_args(argc, argv);
+
   struct addrinfo hints, *out;
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_INET6;

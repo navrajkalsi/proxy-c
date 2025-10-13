@@ -18,6 +18,3 @@ void print_args(unsigned int args_parsed, const Config *config);
 bool validate_port(char *port);
 
 bool validate_canonical(char *canonical);
-
-// Prints error for individual args
-void arg_error(char opt, const char *msg);

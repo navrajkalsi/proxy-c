@@ -1,10 +1,10 @@
-#include <asm-generic/errno-base.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <utils.h>
+
+#include "utils.h"
 
 // error linked list head and tail nodes
 ErrorNode *error_head = NULL, *error_tail = NULL;
@@ -70,6 +70,8 @@ void print_error_list(void) {
             time->tm_sec, current->function);
     if (current->error)
       fprintf(stderr, ": %s\n", current->error);
+    else
+      fputs("\n", stderr);
   } while ((current = current->next));
 
   for (int i = 0; i < TERMINAL_WIDTH; ++i)

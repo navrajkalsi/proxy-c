@@ -1,3 +1,5 @@
 #pragma once
 
-bool setup_proxy();
+#include "args.h"
+
+int setup_proxy(Config *config);
