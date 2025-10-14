@@ -25,9 +25,8 @@ typedef struct errorNode {
 ErrorNode *init_error_node(const char *function, const char *error);
 
 // adds error to errorList, by creating a new errorNode
-void enqueue_error(const char *function, const char *error);
-
-void enqueue_null_error(const char *function);
+// always returns false
+bool enqueue_error(const char *function, const char *error);
 
 void print_error_list(void);
 
@@ -39,3 +38,6 @@ void free_error_list(void);
 bool err(const char *error, bool print_errno);
 
 bool null_ptr(const char *error);
+
+// just like null_ptr() but does not print anything
+bool set_efault(void);

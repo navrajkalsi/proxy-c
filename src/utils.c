@@ -25,13 +25,13 @@ ErrorNode *init_error_node(const char *function, const char *error) {
   return node;
 }
 
-void enqueue_error(const char *function, const char *error) {
+bool enqueue_error(const char *function, const char *error) {
   if (!function)
-    return;
+    return false;
 
   ErrorNode *node;
   if (!(node = init_error_node(function, error)))
-    return (void)err("Init Error Node", false);
+    return err("Init Error Node", false);
 
   // adding to the list
   if (error_tail)
@@ -39,15 +39,7 @@ void enqueue_error(const char *function, const char *error) {
   else
     error_head = error_tail = node;
 
-  return;
-}
-
-void enqueue_null_error(const char *function) {
-  if (!function)
-    return;
-
-  errno = EFAULT;
-  return enqueue_error(function, strerror(errno));
+  return false;
 }
 
 void print_error_list(void) {
@@ -113,4 +105,9 @@ bool err(const char *error, bool print_errno) {
 bool null_ptr(const char *error) {
   errno = EFAULT;
   return err(error, true);
+}
+
+bool set_efault() {
+  errno = EFAULT;
+  return false;
 }

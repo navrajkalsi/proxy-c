@@ -99,6 +99,9 @@ Config parse_args(int argc, char *argv[]) {
 }
 
 void print_usage(const char *prg) {
+  if (!prg)
+    return;
+
   printf("\nUsage: %s [OPTIONS] [ARGS...]\n"
          "Options:\n"
          "-a             Accept Incoming Connections from all IPs, defaults "
@@ -129,10 +132,8 @@ void print_args(unsigned int args_parsed, const Config *config) {
 }
 
 bool validate_port(char *port) {
-  if (!port) {
-    errno = EFAULT;
-    return false;
-  }
+  if (!port)
+    return set_efault();
 
   char *end;
   const long port_num = strtol(port, &end, 10);
@@ -149,10 +150,8 @@ bool validate_port(char *port) {
 }
 
 bool validate_canonical(char *canonical) {
-  if (!canonical) {
-    errno = EFAULT;
-    return false;
-  }
+  if (!canonical)
+    return set_efault();
 
   regex_t regex;
   memset(&regex, 0, sizeof regex);
@@ -162,15 +161,13 @@ bool validate_canonical(char *canonical) {
   if ((status = regcomp(&regex, URL_REGEX,
                         REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
     regerror(status, &regex, error_string, sizeof error_string);
-    enqueue_error("regcomp", error_string);
-    return false;
+    return enqueue_error("regcomp", error_string);
   }
 
   if ((status = regexec(&regex, canonical, 0, NULL, 0)) != 0) {
     regerror(status, &regex, error_string, sizeof error_string);
-    enqueue_error("regexec", error_string);
     regfree(&regex);
-    return false;
+    return enqueue_error("regexec", error_string);
   }
 
   regfree(&regex);
