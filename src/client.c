@@ -33,7 +33,17 @@ bool accept_client(int proxy_fd, int epoll_fd) {
     if (!set_non_block(client_fd))
       return err("set_non_block", strerror(errno));
 
-    if (!add_to_epoll(epoll_fd, client_fd, EPOLLIN))
+    Connection *conn;
+    EventData *data;
+    if (!(conn = init_connection()))
+      return err("init_connection", NULL);
+    conn->client_fd = client_fd;
+    conn->client_events = EPOLLIN;
+
+    if (!(data = init_event_data(TYPE_PTR, (epoll_data_t)(void *)conn)))
+      return err("init_event_data", NULL);
+
+    if (!add_to_epoll(epoll_fd, data, EPOLLIN))
       return err("add_to_epoll", strerror(errno));
 
     puts("accepted client");

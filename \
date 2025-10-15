@@ -69,8 +69,8 @@ bool add_to_epoll(int epoll_fd, EventData *data, int flags) {
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, data->data.fd, &event) == -1)
       return enqueue_error("epoll_ctl", strerror(errno));
   } else if (data->data_type == TYPE_PTR)
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
-                  ((Connection *)(data->data.ptr))->client_fd, &event) == -1)
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, data->data.ptr.client_fd, &event) ==
+        -1)
       return enqueue_error("epoll_ctl", strerror(errno));
   return true;
 }

@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  if (!start_proxy(proxy_fd, epoll_fd)) {
+  if (!start_proxy(epoll_fd)) {
     enqueue_error("start_proxy", strerror(errno));
     return -1;
   }
