@@ -35,9 +35,15 @@ void free_error_list(void);
 
 // Always returns false
 // for printing non-fatal errors
-bool err(const char *error, bool print_errno);
+bool err(const char *function, const char *error);
 
 bool null_ptr(const char *error);
 
 // just like null_ptr() but does not print anything
 bool set_efault(void);
+
+bool setup_sig_handler(void);
+
+void handle_shutdown(int sig);
+
+void handle_sigpipe(int sig);

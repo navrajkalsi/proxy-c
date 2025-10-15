@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #define VERSION "0.1"
 
 // args.h specific
@@ -21,3 +23,5 @@
 #ifndef TERMINAL_WIDTH
 #define TERMINAL_WIDTH 80
 #endif
+
+extern bool RUNNING;

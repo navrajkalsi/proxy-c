@@ -1,4 +1,6 @@
+#include <asm-generic/errno-base.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +15,7 @@ ErrorNode *init_error_node(const char *function, const char *error) {
   ErrorNode *node;
 
   if (!(node = malloc(sizeof(ErrorNode)))) {
-    err("Malloc Error Node", true);
+    err("malloc", strerror(errno));
     return NULL;
   }
 
@@ -31,7 +33,7 @@ bool enqueue_error(const char *function, const char *error) {
 
   ErrorNode *node;
   if (!(node = init_error_node(function, error)))
-    return err("Init Error Node", false);
+    return err("init_error_node", NULL);
 
   // adding to the list
   if (error_tail)
@@ -93,21 +95,59 @@ void free_error_list(void) {
   error_head = error_tail = NULL;
 }
 
-bool err(const char *error, bool print_errno) {
-  if (error && print_errno)
-    perror(error);
-  else if (error)
-    fprintf(stderr, "%s\n", error);
+bool err(const char *function, const char *error) {
+  // this function is used for immediate error reporting, therefore if any child
+  // functions enqueued to error_list, those errors will not be required any
+  // more
+  free_error_list();
+  if (function && !error)
+    fprintf(stderr, "%s(): %s\n", function, error);
+  else if (function)
+    fprintf(stderr, "%s()\n", function);
 
   return false;
 }
 
-bool null_ptr(const char *error) {
-  errno = EFAULT;
-  return err(error, true);
-}
+bool null_ptr(const char *error) { return err(error, strerror(EFAULT)); }
 
 bool set_efault() {
   errno = EFAULT;
   return false;
+}
+
+bool setup_sig_handler(void) {
+  struct sigaction sa_shutdown, sa_pipe;
+
+  // Shutdown
+  sa_shutdown.sa_handler = handle_shutdown;
+  sigemptyset(&sa_shutdown.sa_mask);
+  sa_shutdown.sa_flags = 0; // No flags required for shutting down
+
+  // SIGPIPE
+  sa_pipe.sa_handler = handle_sigpipe;
+  sigemptyset(&sa_pipe.sa_mask);
+  sa_pipe.sa_flags = 0;
+
+  // SIGINT (signal interput) is sent when Ctrl+C is pressed
+  // SIGTERM (signal terminate) is sent when the process is killed from like
+  // terminal with kill command
+  if (sigaction(SIGINT, &sa_shutdown, NULL) == -1 ||
+      sigaction(SIGTERM, &sa_shutdown, NULL) == -1 ||
+      sigaction(SIGPIPE, &sa_pipe, NULL) == -1)
+    return enqueue_error("sigaction", strerror(errno));
+
+  return true;
+}
+
+void handle_shutdown(int sig) {
+  (void)sig;
+  puts("\nReceived kill signal");
+  RUNNING = false;
+  return;
+}
+
+void handle_sigpipe(int sig) {
+  (void)sig;
+  puts("\nReceived SIGPIPE signal");
+  return;
 }
