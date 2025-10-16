@@ -20,7 +20,7 @@ ErrorNode *init_error_node(const char *function, const char *error) {
   }
 
   node->function = function ? strdup(function) : NULL;
-  node->error = error ? strdup(error) : NULL;
+  node->error = error && strcmp(error, "Success") ? strdup(error) : NULL;
   node->time = time(NULL);
   node->next = NULL;
 

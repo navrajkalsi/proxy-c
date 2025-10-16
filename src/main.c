@@ -39,6 +39,12 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
+  // loading server info
+  if (!setup_upstream(config.upstream){
+    enqueue_error("setup_upstream", strerror(errno));
+    return -1;
+  }
+
   if (!start_proxy(epoll_fd)) {
     enqueue_error("start_proxy", strerror(errno));
     return -1;

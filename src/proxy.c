@@ -2,78 +2,15 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 
 #include "client.h"
 #include "main.h"
+#include "poll.h"
 #include "proxy.h"
 #include "utils.h"
-
-EventData *init_event_data(DataType data_type, epoll_data_t data) {
-  EventData *result;
-  if (!(result = malloc(sizeof(EventData)))) {
-    err("malloc", strerror(errno));
-    return NULL;
-  }
-
-  result->data_type = data_type;
-  result->data = data;
-  return result;
-}
-
-void free_event_data(EventData **event_data) {
-  if (!event_data || !*event_data)
-    return;
-
-  free(*event_data);
-  *event_data = NULL;
-};
-
-Connection *init_connection(void) {
-  Connection *result;
-  if (!(result = malloc(sizeof(Connection)))) {
-    err("malloc", strerror(errno));
-    return NULL;
-  }
-  return result;
-}
-
-void free_connection(Connection **conn) {
-  if (!conn || !*conn)
-    return;
-
-  free(*conn);
-  *conn = NULL;
-}
-
-// after non_block all the system calls on this fd return instantly,
-// like read() or write(). so we can deal with other fds and their events
-// without waiting for this fd to finish
-bool set_non_block(int fd) {
-  if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1)
-    return enqueue_error("fcntl", strerror(errno));
-  return true;
-}
-
-// adds the entry in the interest list of epoll instance
-// essentially adds fd to epoll_fd list and the event specifies what to
-// wait for & what fd to do that for
-bool add_to_epoll(int epoll_fd, EventData *data, int flags) {
-  struct epoll_event event = {.events = flags, .data.ptr = (void *)data};
-
-  // only proxy_fd(listening sock) is added as fd
-  if (data->data_type == TYPE_FD) {
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, data->data.fd, &event) == -1)
-      return enqueue_error("epoll_ctl", strerror(errno));
-  } else if (data->data_type == TYPE_PTR)
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
-                  ((Connection *)(data->data.ptr))->client_fd, &event) == -1)
-      return enqueue_error("epoll_ctl", strerror(errno));
-  return true;
-}
 
 bool setup_proxy(Config *config, int *proxy_fd) {
   if (!config || !proxy_fd)
@@ -83,7 +20,7 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_INET6;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
+  hints.ai_flags = AI_PASSIVE; // for listening sock
 
   // If getaddrinfo() errors and does not change errno, then have to use
   // gai_strerror()
@@ -105,8 +42,7 @@ bool setup_proxy(Config *config, int *proxy_fd) {
              socket(out->ai_family, out->ai_socktype, out->ai_protocol)) == -1)
       continue;
 
-    // Have to setsocketopt to allow dual-stack setup supporting both IPv4 &
-    // v6
+    // Have to setsocketopt to allow dual-stack setup supporting both IPv4 & v6
     if (setsockopt(*proxy_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
                    sizeof(int)) == -1) {
       *proxy_fd = -2; // setsockopt errors
@@ -186,6 +122,70 @@ bool setup_async(int proxy_fd, int *epoll_fd) {
   return true;
 }
 
+bool setup_upstream(const char *upstream) {
+  if (!upstream)
+    return set_efault();
+
+  struct addrinfo hints, *out, *current;
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_INET6;
+  hints.ai_socktype = SOCK_STREAM;
+
+  int upstream_fd, status = errno = 0;
+  // targetting port based on the protocol of the upstream
+  if ((status =
+           getaddrinfo(upstream, !memcmp("https", upstream, 5) ? "443" : "80",
+                       &hints, &out)) == -1) {
+    if (!errno)
+      return enqueue_error("getaddrinfo", gai_strerror(status));
+    else
+      return enqueue_error("getaddrinfo", "Getting host info");
+  }
+
+  current = out;
+
+  do {
+    if ((upstream_fd =
+             socket(out->ai_family, out->ai_socktype, out->ai_protocol)) == -1)
+      continue;
+
+    // Have to setsocketopt to allow dual-stack setup supporting both IPv4 & v6
+    if (setsockopt(upstream_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
+                   sizeof(int)) == -1) {
+      upstream_fd = -2; // setsockopt errors
+      goto close;
+    }
+
+    if (connect(upstream_fd, current->ai_addr, current->ai_addrlen) == -1) {
+      upstream_fd = -3;
+      goto close;
+    }
+
+    // If a valid socket is binded to then break, else set proxy_fd to -1
+    break;
+
+  close:
+    close(upstream_fd);
+    continue;
+  } while ((current = current->ai_next));
+
+  freeaddrinfo(out);
+  // dealing with different errors
+  if (upstream_fd < 0) {
+    if (upstream_fd == -1)
+      return enqueue_error("socket", strerror(errno));
+    else if (upstream_fd == -2)
+      return enqueue_error("setsockopt", strerror(errno));
+    else if (upstream_fd == -3)
+      return enqueue_error("connect", strerror(errno));
+  }
+
+  if (!set_non_block(upstream_fd))
+    return enqueue_error("set_non_block", NULL);
+
+  return true;
+}
+
 bool start_proxy(int epoll_fd) {
   int ready_events = -1;
   struct epoll_event events[MAX_EVENTS]; // this will be filled with the fds
@@ -207,13 +207,18 @@ bool start_proxy(int epoll_fd) {
     // now checking each event and handling it on basis of event specified
     for (int i = 0; i < ready_events; ++i) {
       struct epoll_event event = events[i];
-      EventData *data = (EventData *)event.data.ptr;
-      if (data->data_type == TYPE_FD) { // new client
-        if (!accept_client(data->data.fd, epoll_fd))
+      EventData *event_data = (EventData *)event.data.ptr;
+
+      if (event_data->data_type == TYPE_FD) { // new client
+        if (!accept_client(event_data->data.fd, epoll_fd))
           err("accept_client", NULL); // do not return
         puts("accepted");
-      } else if (event.events & EPOLLIN) // read
-        puts("Ready to read");
+      } else if (event_data->data_type == TYPE_PTR_CLIENT &&
+                 event.events & EPOLLIN) // read from client
+        puts("Ready to read from client");
+      else if (event_data->data_type == TYPE_PTR_SERVER &&
+               event.events & EPOLLIN) // read from server
+        puts("Ready to read from server");
     }
   }
 

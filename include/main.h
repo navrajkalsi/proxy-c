@@ -8,8 +8,8 @@
 #ifndef DEFAULT_PORT
 #define DEFAULT_PORT "1419"
 #endif
-#ifndef DEFAULT_CANONICAL
-#define DEFAULT_CANONICAL "https://domain.com"
+#ifndef DEFAULT_UPSTREAM
+#define DEFAULT_UPSTREAM "https://domain.com"
 #endif
 #ifndef URL_REGEX
 #define URL_REGEX "^https?:\\/\\/(www\\.)?[[:alnum:]-]+\\.[[:alpha:]]{2,}\\/?$"

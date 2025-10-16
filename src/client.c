@@ -1,4 +1,3 @@
-#include <asm-generic/errno.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,7 +6,7 @@
 
 #include "client.h"
 #include "main.h"
-#include "proxy.h"
+#include "poll.h"
 #include "utils.h"
 
 bool accept_client(int proxy_fd, int epoll_fd) {

@@ -4,7 +4,7 @@
 
 typedef struct config {
   char *port;
-  char *canonical;
+  char *upstream;
   bool accept_all;
 } Config;
 
@@ -17,4 +17,4 @@ void print_args(unsigned int args_parsed, const Config *config);
 
 bool validate_port(char *port);
 
-bool validate_canonical(char *canonical);
+bool validate_url(char *upstream);
