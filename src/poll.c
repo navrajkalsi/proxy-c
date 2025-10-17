@@ -32,6 +32,10 @@ Connection *init_connection(void) {
     err("malloc", strerror(errno));
     return NULL;
   }
+
+  result->client_fd = result->upstream_fd = -1;
+  result->operation = CLIENT_READ; // new connection would only be requested if
+                                   // reading from a new client fd
   return result;
 }
 

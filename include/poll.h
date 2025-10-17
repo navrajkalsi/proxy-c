@@ -1,10 +1,18 @@
 #pragma once
 
+#include "main.h"
 #include <stdbool.h>
 #include <sys/epoll.h>
 
 // if connection is storing a fd (only in case of listening sock) or ptr
 typedef enum { TYPE_FD, TYPE_PTR_CLIENT, TYPE_PTR_UPSTREAM } DataType;
+
+typedef enum {
+  CLIENT_READ,
+  CLIENT_WRITE,
+  UPSTREAM_READ,
+  UPSTREAM_WRITE
+} Operation;
 
 // struct to be used for adding to the epoll instance
 typedef struct event_data {
@@ -15,7 +23,9 @@ typedef struct event_data {
 // helper struct to organize client and server communication
 // this will be the pointer that is added to epoll data
 typedef struct connection {
-  int client_fd, client_events, server_fd, server_events;
+  char client_buffer[BUFFER_SIZE], upstream_buffer[BUFFER_SIZE];
+  Operation operation;
+  int client_fd, upstream_fd;
 } Connection;
 
 // Returns a pointer to event_data that needs to be added to the epoll_instance

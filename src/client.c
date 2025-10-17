@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -37,16 +38,22 @@ bool accept_client(int proxy_fd, int epoll_fd) {
     if (!(conn = init_connection()))
       return err("init_connection", NULL);
     conn->client_fd = client_fd;
-    conn->client_events = EPOLLIN;
 
     if (!(data = init_event_data(TYPE_PTR_CLIENT, (epoll_data_t)(void *)conn)))
       return err("init_event_data", NULL);
 
     if (!add_to_epoll(epoll_fd, data, EPOLLIN))
       return err("add_to_epoll", strerror(errno));
-
-    puts("accepted client");
   }
 
   return true;
+}
+
+bool read_client(EventData *event_data) {
+  if (!event_data)
+    return set_efault();
+
+  // event_data SHOULD ALWAYS contain the data as a pointer to a conn
+  assert(event_data->data_type == TYPE_PTR_CLIENT);
+  assert((Connection *)event_data->data.ptr);
 }

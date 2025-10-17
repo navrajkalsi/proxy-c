@@ -15,6 +15,9 @@
 #define URL_REGEX "^https?:\\/\\/(www\\.)?[[:alnum:]-]+\\.[[:alpha:]]{2,}\\/?$"
 #endif
 
+// poll.h specific
+#define BUFFER_SIZE 4096
+
 // proxy.h specific
 #define BACKLOG 25
 #define MAX_EVENTS 256
