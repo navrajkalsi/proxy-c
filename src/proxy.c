@@ -10,6 +10,7 @@
 #include "main.h"
 #include "poll.h"
 #include "proxy.h"
+#include "request.h"
 #include "utils.h"
 
 // possible ways to connect to upstream
@@ -222,10 +223,12 @@ bool start_proxy(int epoll_fd) {
           err("accept_client", NULL); // do not return
         puts("accepted");
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
-                 event.events & EPOLLIN) // read from client
+                 event.events & EPOLLIN) { // read from client
         puts("Ready to read from client");
-      else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
-               event.events & EPOLLIN) // read from upstream
+        if (!handle_request(event_data))
+          err("handle_request", strerror(errno));
+      } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
+                 event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
       else if (event_data->data_type == TYPE_PTR_CLIENT &&
                event.events & EPOLLOUT) // send to client

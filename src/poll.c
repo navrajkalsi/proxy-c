@@ -76,7 +76,7 @@ bool add_to_epoll(int epoll_fd, EventData *event_data, int flags) {
       return err("epoll_ctl", strerror(errno));
   } else if (event_data->data_type == TYPE_PTR_UPSTREAM) { // add for server_fd
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
-                  ((Connection *)event_data->data.ptr)->server_fd, &event))
+                  ((Connection *)event_data->data.ptr)->upstream_fd, &event))
       return err("epoll_ctl", strerror(errno));
   }
   return true;

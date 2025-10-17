@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <errno.h>
-#include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -47,13 +46,4 @@ bool accept_client(int proxy_fd, int epoll_fd) {
   }
 
   return true;
-}
-
-bool read_client(EventData *event_data) {
-  if (!event_data)
-    return set_efault();
-
-  // event_data SHOULD ALWAYS contain the data as a pointer to a conn
-  assert(event_data->data_type == TYPE_PTR_CLIENT);
-  assert((Connection *)event_data->data.ptr);
 }
