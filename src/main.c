@@ -16,6 +16,7 @@ int main(int argc, char *argv[]) {
 
   // atexits
   {
+    atexit(free_upstream_addrinfo);
     atexit(free_error_list);
     atexit(print_error_list);
   }
@@ -34,13 +35,13 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  if (!setup_async(proxy_fd, &epoll_fd)) {
+  if (!setup_epoll(proxy_fd, &epoll_fd)) {
     enqueue_error("setup_async", strerror(errno));
     return -1;
   }
 
-  // loading server info
-  if (!setup_upstream(config.upstream){
+  // loading server info, into global var in proxy.c
+  if (!setup_upstream(config.upstream)) {
     enqueue_error("setup_upstream", strerror(errno));
     return -1;
   }

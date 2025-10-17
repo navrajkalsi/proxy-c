@@ -12,6 +12,9 @@
 #include "proxy.h"
 #include "utils.h"
 
+// possible ways to connect to upstream
+struct addrinfo *upstream_addrinfo = NULL;
+
 bool setup_proxy(Config *config, int *proxy_fd) {
   if (!config || !proxy_fd)
     return set_efault();
@@ -38,8 +41,8 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   current = out;
 
   do {
-    if ((*proxy_fd =
-             socket(out->ai_family, out->ai_socktype, out->ai_protocol)) == -1)
+    if ((*proxy_fd = socket(current->ai_family, current->ai_socktype,
+                            current->ai_protocol)) == -1)
       continue;
 
     // Have to setsocketopt to allow dual-stack setup supporting both IPv4 & v6
@@ -104,7 +107,7 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   return true;
 }
 
-bool setup_async(int proxy_fd, int *epoll_fd) {
+bool setup_epoll(int proxy_fd, int *epoll_fd) {
   if (!epoll_fd)
     return set_efault();
 
@@ -126,62 +129,67 @@ bool setup_upstream(const char *upstream) {
   if (!upstream)
     return set_efault();
 
-  struct addrinfo hints, *out, *current;
+  struct addrinfo hints;
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_INET6;
   hints.ai_socktype = SOCK_STREAM;
 
-  int upstream_fd, status = errno = 0;
+  int status = errno = 0;
   // targetting port based on the protocol of the upstream
   if ((status =
            getaddrinfo(upstream, !memcmp("https", upstream, 5) ? "443" : "80",
-                       &hints, &out)) == -1) {
+                       &hints, &upstream_addrinfo)) == -1) {
     if (!errno)
       return enqueue_error("getaddrinfo", gai_strerror(status));
     else
       return enqueue_error("getaddrinfo", "Getting host info");
   }
 
-  current = out;
+  return true;
+}
+
+bool connect_upstream(int *upstream_fd) {
+  struct addrinfo *current = upstream_addrinfo;
+  if (!current)
+    return err("verify_upstream", "upsream_addrinfo is NULL");
 
   do {
-    if ((upstream_fd =
-             socket(out->ai_family, out->ai_socktype, out->ai_protocol)) == -1)
+    if ((*upstream_fd = socket(current->ai_family, current->ai_socktype,
+                               current->ai_protocol)) == -1)
       continue;
 
     // Have to setsocketopt to allow dual-stack setup supporting both IPv4 & v6
-    if (setsockopt(upstream_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
+    if (setsockopt(*upstream_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
                    sizeof(int)) == -1) {
-      upstream_fd = -2; // setsockopt errors
+      *upstream_fd = -2; // setsockopt errors
       goto close;
     }
 
-    if (connect(upstream_fd, current->ai_addr, current->ai_addrlen) == -1) {
-      upstream_fd = -3;
+    if (connect(*upstream_fd, current->ai_addr, current->ai_addrlen) == -1) {
+      *upstream_fd = -3;
       goto close;
     }
 
-    // If a valid socket is binded to then break, else set proxy_fd to -1
+    // If a valid socket is connected to then break
     break;
 
   close:
-    close(upstream_fd);
+    close(*upstream_fd);
     continue;
   } while ((current = current->ai_next));
 
-  freeaddrinfo(out);
   // dealing with different errors
-  if (upstream_fd < 0) {
-    if (upstream_fd == -1)
-      return enqueue_error("socket", strerror(errno));
-    else if (upstream_fd == -2)
-      return enqueue_error("setsockopt", strerror(errno));
-    else if (upstream_fd == -3)
-      return enqueue_error("connect", strerror(errno));
+  if (*upstream_fd < 0) {
+    if (*upstream_fd == -1)
+      return err("socket", strerror(errno));
+    else if (*upstream_fd == -2)
+      return err("setsockopt", strerror(errno));
+    else if (*upstream_fd == -3)
+      return err("connect", strerror(errno));
   }
 
-  if (!set_non_block(upstream_fd))
-    return enqueue_error("set_non_block", NULL);
+  if (!set_non_block(*upstream_fd))
+    return err("set_non_block", NULL);
 
   return true;
 }
@@ -216,12 +224,25 @@ bool start_proxy(int epoll_fd) {
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
                  event.events & EPOLLIN) // read from client
         puts("Ready to read from client");
-      else if (event_data->data_type == TYPE_PTR_SERVER &&
-               event.events & EPOLLIN) // read from server
+      else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
+               event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
+      else if (event_data->data_type == TYPE_PTR_CLIENT &&
+               event.events & EPOLLOUT) // send to client
+        puts("Ready to send to client");
+      else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
+               event.events & EPOLLOUT) // send to upstream
+        puts("Ready to send to upstream");
+      else
+        err("verify_vaildate_data", "unknown event data");
     }
   }
 
   puts("\nShutting Down\n");
   return true;
+}
+
+void free_upstream_addrinfo(void) {
+  if (upstream_addrinfo)
+    freeaddrinfo(upstream_addrinfo);
 }

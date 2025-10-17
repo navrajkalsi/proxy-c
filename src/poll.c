@@ -69,11 +69,11 @@ bool add_to_epoll(int epoll_fd, EventData *event_data, int flags) {
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
                   ((Connection *)event_data->data.ptr)->client_fd,
                   &event) == -1)
-      return enqueue_error("epoll_ctl", strerror(errno));
-  } else if (event_data->data_type == TYPE_PTR_SERVER) { // add for server_fd
+      return err("epoll_ctl", strerror(errno));
+  } else if (event_data->data_type == TYPE_PTR_UPSTREAM) { // add for server_fd
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
                   ((Connection *)event_data->data.ptr)->server_fd, &event))
-      return enqueue_error("epoll_ctl", strerror(errno));
+      return err("epoll_ctl", strerror(errno));
   }
   return true;
 }

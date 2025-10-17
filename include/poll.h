@@ -4,7 +4,7 @@
 #include <sys/epoll.h>
 
 // if connection is storing a fd (only in case of listening sock) or ptr
-typedef enum { TYPE_FD, TYPE_PTR_CLIENT, TYPE_PTR_SERVER } DataType;
+typedef enum { TYPE_FD, TYPE_PTR_CLIENT, TYPE_PTR_UPSTREAM } DataType;
 
 // struct to be used for adding to the epoll instance
 typedef struct event_data {
