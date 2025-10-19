@@ -28,11 +28,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  // event data to be filled by setup_epoll
-  // this is the pointer that will be added to the epoll instance for EPOLLIN
-  EventData *proxy_event_data = NULL;
-
-  if (!setup_epoll(proxy_fd, &epoll_fd, proxy_event_data)) {
+  if (!setup_epoll(proxy_fd, &epoll_fd)) {
     err("setup_async", strerror(errno));
     return -1;
   }
@@ -43,7 +39,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  if (!start_proxy(epoll_fd, proxy_event_data)) {
+  if (!start_proxy(epoll_fd)) {
     err("start_proxy", strerror(errno));
     return -1;
   }

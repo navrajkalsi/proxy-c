@@ -4,7 +4,7 @@
 
 #include "args.h"
 
-#define VERSION "0.1"
+#define VERSION "0.2"
 
 // args.h specific
 #ifndef DEFAULT_PORT
@@ -33,7 +33,8 @@
 
 // proxy.h specific
 #define BACKLOG 25
-#define MAX_EVENTS 256
+#define MAX_EVENTS 32
+#define MAX_CONNECTIONS 256
 
 // request.h specific
 #define TRAILER STR("\r\n\r\n")

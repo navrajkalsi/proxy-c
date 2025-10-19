@@ -8,11 +8,15 @@
 // global var that stores a linked list of struct addrinfo containing info about
 // upstream server
 extern struct addrinfo *upstream_addrinfo;
+// global array of eventData structs that were added to the epoll table
+// init_event_data() & free_event_data() add and remove from this array
+// automatically
+extern EventData *active_conns[MAX_CONNECTIONS];
 
 bool setup_proxy(Config *config, int *proxy_fd);
 
 // sets up epoll() and points out to the fd for new epoll instance
-bool setup_epoll(int proxy_fd, int *epoll_fd, EventData *proxy_event_data);
+bool setup_epoll(int proxy_fd, int *epoll_fd);
 
 // fills upstream_addrinfo by calling getaddrinfo() on the upstream
 bool setup_upstream(const char *upstream);
@@ -21,7 +25,9 @@ bool setup_upstream(const char *upstream);
 // new socket fd
 bool connect_upstream(int *upstream_fd);
 
-bool start_proxy(int epoll_fd, EventData *proxy_event_data);
+bool start_proxy(int epoll_fd);
 
 // for atexit to free the global var
 void free_upstream_addrinfo(void);
+
+void free_active_conns(void);

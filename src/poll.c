@@ -1,10 +1,12 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "main.h"
 #include "poll.h"
+#include "proxy.h"
 #include "utils.h"
 
 EventData *init_event_data(DataType data_type, epoll_data_t data) {
@@ -16,12 +18,21 @@ EventData *init_event_data(DataType data_type, epoll_data_t data) {
 
   result->data_type = data_type;
   result->data = data;
+
+  if (!activate_event(result)) {
+    err("activate_event",
+        errno ? strerror(errno) : "Max limit of active connections reached");
+    return NULL;
+  }
+
   return result;
 }
 
 void free_event_data(EventData **event_data) {
   if (!event_data || !*event_data)
     return;
+
+  deactivate_event(*event_data);
 
   free(*event_data);
   *event_data = NULL;
@@ -60,9 +71,30 @@ void free_event_conn(EventData **event_data) {
   free_event_data(event_data);
 }
 
+bool activate_event(EventData *event_data) {
+  if (!event_data)
+    return set_efault();
+
+  for (int i = 0; i < MAX_CONNECTIONS; ++i)
+    if (!active_conns[i]) {
+      active_conns[i] = event_data;
+      event_data->self_ptr = active_conns + i;
+      return true;
+    }
+
+  return false;
+}
+
+void deactivate_event(EventData *event_data) {
+  if (!event_data)
+    return;
+
+  event_data->self_ptr = NULL;
+}
+
 // after non_block all the system calls on this fd return instantly,
-// like read() or write(). so we can deal with other fds and their events
-// without waiting for this fd to finish
+// like read() or write(). so we can deal with other fds and their
+// events without waiting for this fd to finish
 bool set_non_block(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
   if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)

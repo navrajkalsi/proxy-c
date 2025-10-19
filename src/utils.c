@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include "main.h"
+#include "proxy.h"
 #include "utils.h"
 
 Str str_data_malloc(const char *in) {
@@ -242,4 +243,13 @@ void handle_sigpipe(int sig) {
   (void)sig;
   puts("\nReceived SIGPIPE signal");
   return;
+}
+
+void print_active_num(void) {
+  int active = 0;
+  for (int i = 0; i < MAX_CONNECTIONS; ++i)
+    if (active_conns[i])
+      active++;
+
+  printf("Num of active connections: %d\n", active);
 }

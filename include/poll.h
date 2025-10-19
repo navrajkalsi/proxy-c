@@ -19,6 +19,9 @@ typedef enum {
 // struct to be used for adding to the epoll instance
 typedef struct event_data {
   epoll_data_t data; // union
+  struct event_data *
+      *self_ptr; // this will be an element of active_conns array, used to
+                 // deactive/remove from active_conns(just make this NULL)
   DataType data_type;
 } EventData;
 
@@ -42,6 +45,13 @@ void free_connection(Connection **conn);
 
 // frees both event data and the connection it points to
 void free_event_conn(EventData **event_data);
+
+// adds event_data to the active_conns array
+bool activate_event(EventData *event_data);
+
+// removes event_data from active_conns array
+// by making self_ptr NULL which make the array entry NULL
+void deactivate_event(EventData *event_data);
 
 // calls fcntl to set non block option on a socket
 bool set_non_block(int fd);

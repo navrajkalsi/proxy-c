@@ -82,3 +82,6 @@ bool setup_sig_handler(void);
 void handle_shutdown(int sig);
 
 void handle_sigpipe(int sig);
+
+// prints number of active connections
+void print_active_num(void);

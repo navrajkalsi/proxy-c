@@ -15,6 +15,7 @@
 
 // possible ways to connect to upstream
 struct addrinfo *upstream_addrinfo = NULL;
+EventData *active_conns[MAX_CONNECTIONS] = {0};
 
 bool setup_proxy(Config *config, int *proxy_fd) {
   if (!config || !proxy_fd)
@@ -108,7 +109,7 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   return true;
 }
 
-bool setup_epoll(int proxy_fd, int *epoll_fd, EventData *proxy_event_data) {
+bool setup_epoll(int proxy_fd, int *epoll_fd) {
   if (!epoll_fd)
     return set_efault();
 
@@ -116,11 +117,14 @@ bool setup_epoll(int proxy_fd, int *epoll_fd, EventData *proxy_event_data) {
   if (*epoll_fd == -1)
     return err("epoll_create", strerror(errno));
 
-  if (!(proxy_event_data = init_event_data(TYPE_FD, (epoll_data_t)proxy_fd)))
+  EventData *data = NULL;
+  if (!(data = init_event_data(TYPE_FD, (epoll_data_t)proxy_fd)))
     return err("init_event_data", NULL);
 
-  if (!add_to_epoll(*epoll_fd, proxy_event_data, EPOLLIN))
+  if (!add_to_epoll(*epoll_fd, data, EPOLLIN))
     return err("add_to_epoll", NULL);
+
+  print_active_num();
 
   return true;
 }
@@ -194,7 +198,7 @@ bool connect_upstream(int *upstream_fd) {
   return true;
 }
 
-bool start_proxy(int epoll_fd, EventData *proxy_event_data) {
+bool start_proxy(int epoll_fd) {
   int ready_events = -1;
   struct epoll_event events[MAX_EVENTS]; // this will be filled with the fds
                                          // that are ready with their
@@ -220,7 +224,7 @@ bool start_proxy(int epoll_fd, EventData *proxy_event_data) {
       if (event_data->data_type == TYPE_FD) { // new client
         if (!accept_client(event_data->data.fd, epoll_fd))
           err("accept_client", NULL); // do not return
-        puts("accepted");
+        puts("Accepted a new client");
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
                  event.events & EPOLLIN) { // read from client
         puts("Ready to read from client");
@@ -240,11 +244,13 @@ bool start_proxy(int epoll_fd, EventData *proxy_event_data) {
     }
   }
 
+  print_active_num();
+
   puts("\nShutting Down\n");
   free_upstream_addrinfo();
-  free_event_data(
-      &proxy_event_data); // remember for this, epoll_data_t will be an int, so
-                          // no need to call free_connection()
+  free_active_conns();
+
+  print_active_num();
 
   return true;
 }
@@ -252,4 +258,10 @@ bool start_proxy(int epoll_fd, EventData *proxy_event_data) {
 void free_upstream_addrinfo(void) {
   if (upstream_addrinfo)
     freeaddrinfo(upstream_addrinfo);
+}
+
+void free_active_conns(void) {
+  for (int i = 0; i < MAX_CONNECTIONS; ++i)
+    if (active_conns[i])
+      free_event_conn(&active_conns[i]);
 }
