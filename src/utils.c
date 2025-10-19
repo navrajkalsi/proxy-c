@@ -190,10 +190,12 @@ bool err(const char *function, const char *error) {
   // functions enqueued to error_list, those errors will not be required any
   // more
   free_error_list();
-  if (function && !error)
+  if (function && error)
     fprintf(stderr, "%s(): %s\n", function, error);
-  else if (function)
+  else if (function && !error)
     fprintf(stderr, "%s()\n", function);
+  else
+    fputs("Unknown error", stderr);
 
   return false;
 }

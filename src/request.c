@@ -1,6 +1,8 @@
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netdb.h>
+#include <regex.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -96,14 +98,51 @@ bool validate_request(const Str *request) {
   char *host_ptr = strcasestr(request->data, "Host"),
        *host_end = !host_ptr ? NULL : strchr(host_ptr, '\r');
 
-  if (!host_ptr || !host_end)
+  if (!host_ptr || !host_end || !(host_ptr = strchr(host_ptr, ':')))
     return err("validate_host", "Host header not found");
 
-  const Str host_header = {.data = host_ptr,
-                           .len = (ptrdiff_t)(host_end - host_ptr)};
+  // right now host_ptr is pointing to ':'
+  // incrementing to point to the first char of the value
+  while (isspace(*++host_ptr) && host_ptr < host_end)
+    ;
+
+  const Str host_header = {.data = host_ptr, .len = host_end - host_ptr};
 
   if (!validate_host(&host_header))
     return err("validate_host", NULL);
 
+  return true;
+}
+
+bool validate_host(const Str *header) {
+  if (!header)
+    return set_efault();
+
+  // limitations of the check, for now:
+  // does not support: direct ips
+
+  regex_t regex;
+  memset(&regex, 0, sizeof regex);
+  int status = 0;
+  char error_string[256];
+
+  if ((status = regcomp(&regex, ORIGIN_REGEX,
+                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
+    regerror(status, &regex, error_string, sizeof error_string);
+    return err("regcomp", error_string);
+  }
+
+  // tmp null termination
+  char org_end = header->data[header->len];
+  header->data[header->len] = '\0';
+  if ((status = regexec(&regex, header->data, 0, NULL, 0)) != 0) {
+    regerror(status, &regex, error_string, sizeof error_string);
+    regfree(&regex);
+    header->data[header->len] = org_end;
+    return err("regexec", error_string);
+  }
+
+  regfree(&regex);
+  header->data[header->len] = org_end;
   return true;
 }

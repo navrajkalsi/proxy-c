@@ -11,8 +11,9 @@
 #ifndef DEFAULT_UPSTREAM
 #define DEFAULT_UPSTREAM "https://domain.com"
 #endif
-#ifndef URL_REGEX
-#define URL_REGEX "^https?:\\/\\/(www\\.)?[[:alnum:]-]+\\.[[:alpha:]]{2,}\\/?$"
+#ifndef ORIGIN_REGEX
+#define ORIGIN_REGEX                                                           \
+  "^(https?:\\/\\/)?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?\\/?$"
 #endif
 
 // utils.h specific

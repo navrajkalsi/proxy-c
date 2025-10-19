@@ -157,7 +157,7 @@ bool validate_url(char *upstream) {
   int status = 0;
   char error_string[256];
 
-  if ((status = regcomp(&regex, URL_REGEX,
+  if ((status = regcomp(&regex, ORIGIN_REGEX,
                         REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
     regerror(status, &regex, error_string, sizeof error_string);
     return enqueue_error("regcomp", error_string);
