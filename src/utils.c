@@ -226,7 +226,7 @@ bool setup_sig_handler(void) {
   if (sigaction(SIGINT, &sa_shutdown, NULL) == -1 ||
       sigaction(SIGTERM, &sa_shutdown, NULL) == -1 ||
       sigaction(SIGPIPE, &sa_pipe, NULL) == -1)
-    return enqueue_error("sigaction", strerror(errno));
+    return err("sigaction", strerror(errno));
 
   return true;
 }

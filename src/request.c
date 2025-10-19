@@ -81,25 +81,31 @@ bool handle_request(const EventData *event_data) {
   // Only parsing (handle_request) if the request line is present
   // while (equals(&client->connection, &STR("keep-alive")));
 
-  validate_request(&conn->client_request);
+  validate_request(conn);
   return true;
 }
 
-bool validate_request(const Str *request) {
-  if (!request)
+bool validate_request(Connection *conn) {
+  if (!conn)
     return set_efault();
 
+  const Str request = conn->client_request;
+
   // just verifying beginning of request header
-  if (request->len < (uint)sizeof "GET" ||
-      memcmp(request->data, "GET ", 4) != 0)
+  if (request.len < (uint)sizeof "GET" ||
+      memcmp(request.data, "GET ", 4) != 0) {
+    conn->client_status = STR("405 Method Not Allowed");
     return err("validate_method", "Invalid method");
+  }
 
   // finding the host header
-  char *host_ptr = strcasestr(request->data, "Host"),
+  char *host_ptr = strcasestr(request.data, "Host"),
        *host_end = !host_ptr ? NULL : strchr(host_ptr, '\r');
 
-  if (!host_ptr || !host_end || !(host_ptr = strchr(host_ptr, ':')))
+  if (!host_ptr || !host_end || !(host_ptr = strchr(host_ptr, ':'))) {
+    conn->client_status = STR("400 Bad Request");
     return err("validate_host", "Host header not found");
+  }
 
   // right now host_ptr is pointing to ':'
   // incrementing to point to the first char of the value
@@ -108,9 +114,16 @@ bool validate_request(const Str *request) {
 
   const Str host_header = {.data = host_ptr, .len = host_end - host_ptr};
 
-  if (!validate_host(&host_header))
+  if (!validate_host(&host_header)) {
+    conn->client_status = STR("301 Moved Permanently");
     return err("validate_host", NULL);
+  }
 
+  // if client_status is NULL now, the host is identical to the upstream url and
+  // can request the upstream, else serve appropriate error code
+  conn->client_status = ASSIGN_IF_NULL(conn->client_status, "200 OK");
+
+  str_print(&conn->client_status);
   return true;
 }
 
@@ -143,6 +156,18 @@ bool validate_host(const Str *header) {
   }
 
   regfree(&regex);
+
+  // comparing it to the upstream
+  size_t to_compare =
+      header->data[header->len] == '/' ? header->len - 1 : header->len;
+
+  if ((size_t)header->len < to_compare ||
+      strlen(config.upstream) < to_compare ||
+      memcmp(header->data, config.upstream, to_compare) != 0) {
+    header->data[header->len] = org_end;
+    return false;
+  }
+
   header->data[header->len] = org_end;
   return true;
 }

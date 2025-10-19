@@ -34,9 +34,9 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   if ((status = getaddrinfo(config->accept_all ? "::" : "::1", config->port,
                             &hints, &out)) == -1) {
     if (!errno)
-      return enqueue_error("getaddrinfo", gai_strerror(status));
+      return err("getaddrinfo", gai_strerror(status));
     else
-      return enqueue_error("getaddrinfo", "Getting host info");
+      return err("getaddrinfo", "Getting host info");
   }
 
   current = out;
@@ -90,38 +90,37 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   // dealing with different errors
   if (*proxy_fd < 0) {
     if (*proxy_fd == -1)
-      return enqueue_error("socket", strerror(errno));
+      return err("socket", strerror(errno));
     else if (*proxy_fd == -2)
-      return enqueue_error("setsockopt", strerror(errno));
+      return err("setsockopt", strerror(errno));
     else if (*proxy_fd == -3)
-      return enqueue_error("bind", strerror(errno));
+      return err("bind", strerror(errno));
   }
 
   if (listen(*proxy_fd, BACKLOG) == -1)
-    return enqueue_error("listen", strerror(errno));
+    return err("listen", strerror(errno));
 
   if (!set_non_block(*proxy_fd))
-    return enqueue_error("set_non_block", NULL);
+    return err("set_non_block", NULL);
 
   printf("\nProxy Listening on port: %s\n\n", config->port);
 
   return true;
 }
 
-bool setup_epoll(int proxy_fd, int *epoll_fd) {
+bool setup_epoll(int proxy_fd, int *epoll_fd, EventData *proxy_event_data) {
   if (!epoll_fd)
     return set_efault();
 
-  *epoll_fd = epoll_create1(0);
+  *epoll_fd = epoll_create(1);
   if (*epoll_fd == -1)
-    return enqueue_error("epoll_create1", strerror(errno));
+    return err("epoll_create", strerror(errno));
 
-  EventData *data = NULL;
-  if (!(data = init_event_data(TYPE_FD, (epoll_data_t)proxy_fd)))
-    return enqueue_error("init_event_data", NULL);
+  if (!(proxy_event_data = init_event_data(TYPE_FD, (epoll_data_t)proxy_fd)))
+    return err("init_event_data", NULL);
 
-  if (!add_to_epoll(*epoll_fd, data, EPOLLIN))
-    return enqueue_error("add_to_epoll", NULL);
+  if (!add_to_epoll(*epoll_fd, proxy_event_data, EPOLLIN))
+    return err("add_to_epoll", NULL);
 
   return true;
 }
@@ -141,9 +140,9 @@ bool setup_upstream(const char *upstream) {
            getaddrinfo(upstream, !memcmp("https", upstream, 5) ? "443" : "80",
                        &hints, &upstream_addrinfo)) == -1) {
     if (!errno)
-      return enqueue_error("getaddrinfo", gai_strerror(status));
+      return err("getaddrinfo", gai_strerror(status));
     else
-      return enqueue_error("getaddrinfo", "Getting host info");
+      return err("getaddrinfo", "Getting host info");
   }
 
   return true;
@@ -195,7 +194,7 @@ bool connect_upstream(int *upstream_fd) {
   return true;
 }
 
-bool start_proxy(int epoll_fd) {
+bool start_proxy(int epoll_fd, EventData *proxy_event_data) {
   int ready_events = -1;
   struct epoll_event events[MAX_EVENTS]; // this will be filled with the fds
                                          // that are ready with their
@@ -208,7 +207,7 @@ bool start_proxy(int epoll_fd) {
                                       // otherwise the program just crashes
         break;
 
-      return enqueue_error("epoll_wait", strerror(errno));
+      return err("epoll_wait", strerror(errno));
     }
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
@@ -226,7 +225,7 @@ bool start_proxy(int epoll_fd) {
                  event.events & EPOLLIN) { // read from client
         puts("Ready to read from client");
         if (!handle_request(event_data))
-          err("handle_request", strerror(errno));
+          err("handle_request", NULL);
       } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                  event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
@@ -242,6 +241,11 @@ bool start_proxy(int epoll_fd) {
   }
 
   puts("\nShutting Down\n");
+  free_upstream_addrinfo();
+  free_event_data(
+      &proxy_event_data); // remember for this, epoll_data_t will be an int, so
+                          // no need to call free_connection()
+
   return true;
 }
 

@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "args.h"
+
 #define VERSION "0.1"
 
 // args.h specific
@@ -13,7 +15,9 @@
 #endif
 #ifndef ORIGIN_REGEX
 #define ORIGIN_REGEX                                                           \
-  "^(https?:\\/\\/)?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?\\/?$"
+  "^(https?:\\/\\/"                                                            \
+  ")?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?"  \
+  "\\/?$"
 #endif
 
 // utils.h specific
@@ -34,5 +38,8 @@
 // request.h specific
 #define TRAILER STR("\r\n\r\n")
 #define LINEBREAK STR("\r\n")
+// only to assign the string literal to str.data if str.data is null
+#define ASSIGN_IF_NULL(str, literal) !str.data ? STR(literal) : str
 
 extern bool RUNNING;
+extern Config config;

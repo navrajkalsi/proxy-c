@@ -32,7 +32,7 @@ Config parse_args(int argc, char *argv[]) {
       exit(EXIT_SUCCESS);
     case 'p':
       if (!validate_port(optarg)) {
-        enqueue_error("validate_port", strerror(errno));
+        err("validate_port", strerror(errno));
         if (config.upstream)
           free(config.upstream);
         exit(EXIT_FAILURE);
@@ -42,8 +42,8 @@ Config parse_args(int argc, char *argv[]) {
       break;
     case 'u':
       if (!validate_url(optarg)) {
-        enqueue_error("validate_url",
-                      errno ? strerror(errno) : "Invalid upstream url passed");
+        err("validate_url",
+            errno ? strerror(errno) : "Invalid upstream url passed");
         if (config.port)
           free(config.port);
         exit(EXIT_FAILURE);
@@ -57,18 +57,16 @@ Config parse_args(int argc, char *argv[]) {
     case '?': // If an unknown flag or no argument is passed for an option
               // 'optopt' is set to the flag
       if (optopt == 'p')
-        enqueue_error("parse_args", "Option '-p' requires a valid port number");
+        err("parse_args", "Option '-p' requires a valid port number");
       else if (optopt == 'u')
-        enqueue_error("parse_args",
-                      "Option '-u' requires a valid upstream url");
+        err("parse_args", "Option '-u' requires a valid upstream url");
       else if (isprint(optopt))
-        enqueue_error("parse_args", "Unknown option");
+        err("parse_args", "Unknown option");
       else
-        enqueue_error("parse_args", "Unknown option character used!\n");
+        err("parse_args", "Unknown option character used!\n");
       exit(EXIT_FAILURE);
     default:
-      enqueue_error("parse_args",
-                    "Unknown error occurred while parsing arguments");
+      err("parse_args", "Unknown error occurred while parsing arguments");
       exit(EXIT_FAILURE);
     }
 
@@ -77,8 +75,8 @@ Config parse_args(int argc, char *argv[]) {
     if (!(validate_url(DEFAULT_UPSTREAM))) {
       if (config.port)
         free(config.port);
-      enqueue_error("validate_url",
-                    errno ? strerror(errno) : "Invalid upstream url passed");
+      err("validate_url",
+          errno ? strerror(errno) : "Invalid upstream url passed");
       exit(EXIT_FAILURE);
     }
     config.upstream = DEFAULT_UPSTREAM;
@@ -87,7 +85,7 @@ Config parse_args(int argc, char *argv[]) {
     if (!(validate_port(DEFAULT_PORT))) {
       if (config.upstream)
         free(config.upstream);
-      enqueue_error("validate_port", NULL);
+      err("validate_port", NULL);
       exit(EXIT_FAILURE);
     }
     config.port = DEFAULT_PORT;
@@ -160,13 +158,13 @@ bool validate_url(char *upstream) {
   if ((status = regcomp(&regex, ORIGIN_REGEX,
                         REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
     regerror(status, &regex, error_string, sizeof error_string);
-    return enqueue_error("regcomp", error_string);
+    return err("regcomp", error_string);
   }
 
   if ((status = regexec(&regex, upstream, 0, NULL, 0)) != 0) {
     regerror(status, &regex, error_string, sizeof error_string);
     regfree(&regex);
-    return enqueue_error("regexec", error_string);
+    return err("regexec", error_string);
   }
 
   regfree(&regex);

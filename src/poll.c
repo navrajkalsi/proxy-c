@@ -37,7 +37,8 @@ Connection *init_connection(void) {
   result->client_fd = result->upstream_fd = -1;
   result->operation = CLIENT_READ; // new connection would only be requested if
                                    // reading from a new client fd
-  result->client_request = result->upstream_response = ERR_STR;
+  result->client_request = result->upstream_response = result->client_status =
+      ERR_STR;
   return result;
 }
 
@@ -49,13 +50,23 @@ void free_connection(Connection **conn) {
   *conn = NULL;
 }
 
+void free_event_conn(EventData **event_data) {
+  if (!event_data || !*event_data)
+    return;
+
+  if ((*event_data)->data_type != TYPE_FD && (*event_data)->data.ptr)
+    free_connection((Connection **)&(*event_data)->data.ptr);
+
+  free_event_data(event_data);
+}
+
 // after non_block all the system calls on this fd return instantly,
 // like read() or write(). so we can deal with other fds and their events
 // without waiting for this fd to finish
 bool set_non_block(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
   if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-    return enqueue_error("fcntl", strerror(errno));
+    return err("fcntl", strerror(errno));
   return true;
 }
 
@@ -70,7 +81,7 @@ bool add_to_epoll(int epoll_fd, EventData *event_data, int flags) {
   // only proxy_fd(listening sock) is added as fd
   if (event_data->data_type == TYPE_FD) {
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_data->data.fd, &event) == -1)
-      return enqueue_error("epoll_ctl", strerror(errno));
+      return err("epoll_ctl", strerror(errno));
   } else if (event_data->data_type == TYPE_PTR_CLIENT) { // add for client_fd
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
                   ((Connection *)event_data->data.ptr)->client_fd,

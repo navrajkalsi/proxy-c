@@ -26,7 +26,7 @@ typedef struct event_data {
 // this will be the pointer that is added to epoll data
 typedef struct connection {
   char client_buffer[BUFFER_SIZE], upstream_buffer[BUFFER_SIZE];
-  Str client_request, upstream_response;
+  Str client_request, upstream_response, client_status;
   Operation operation;
   int client_fd, upstream_fd;
 } Connection;
@@ -39,6 +39,9 @@ void free_event_data(EventData **event_data);
 Connection *init_connection(void);
 
 void free_connection(Connection **conn);
+
+// frees both event data and the connection it points to
+void free_event_conn(EventData **event_data);
 
 // calls fcntl to set non block option on a socket
 bool set_non_block(int fd);
