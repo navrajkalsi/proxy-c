@@ -15,16 +15,23 @@
 #define URL_REGEX "^https?:\\/\\/(www\\.)?[[:alnum:]-]+\\.[[:alpha:]]{2,}\\/?$"
 #endif
 
+// utils.h specific
+#ifndef TERMINAL_WIDTH
+#define TERMINAL_WIDTH 80
+#endif
+#define ERR_STR (Str){NULL, 0}
+#define STR(str)                                                               \
+  (Str) { str, (ptrdiff_t)(sizeof(str) - 1) }
+
 // poll.h specific
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 8192
 
 // proxy.h specific
 #define BACKLOG 25
 #define MAX_EVENTS 256
 
-// utils.h specific
-#ifndef TERMINAL_WIDTH
-#define TERMINAL_WIDTH 80
-#endif
+// request.h specific
+#define TRAILER STR("\r\n\r\n")
+#define LINEBREAK STR("\r\n")
 
 extern bool RUNNING;

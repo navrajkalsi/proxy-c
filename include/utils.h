@@ -4,13 +4,48 @@
 #include <stddef.h>
 #include <time.h>
 
-#include "main.h"
-
 // string helper
 typedef struct str {
   char *data;
   ptrdiff_t len;
 } Str;
+
+typedef struct {
+  Str head;
+  Str tail;
+  bool found;
+} Cut;
+
+// Converts a null terminated string to a malloced Str
+// The str is NOT MALLOCED, just the data
+Str str_data_malloc(const char *in);
+
+// The str and data BOTH ARE MALLOCED
+Str *str_malloc(const char *in);
+
+void str_data_free(Str *in);
+
+void str_free(Str **in);
+
+void str_print(const Str *in);
+
+// strcmp like
+bool equals(const Str *a, const Str *b);
+
+// returns Str which points to starting of str but with take len, if possible
+Str takehead(Str str, ptrdiff_t take);
+// since Str args in both are copies, simply could change the str and return
+// returns Str which points to str.len - drop, if possible
+Str drophead(Str str, ptrdiff_t drop);
+
+// cuts a string around the separator without copying str
+// The head and tail are just pointers to the org str with different lengths and
+// starting values
+Cut cut(Str str, char sep);
+
+// checks if str contains chars anywhere
+// returns the index (if found), otherwise 0
+ptrdiff_t contains(const Str *str, const char *chars);
 
 // error node, with name of the errored funciton and its error description
 // typically from strerror()

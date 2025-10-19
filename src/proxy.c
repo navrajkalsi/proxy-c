@@ -152,7 +152,7 @@ bool setup_upstream(const char *upstream) {
 bool connect_upstream(int *upstream_fd) {
   struct addrinfo *current = upstream_addrinfo;
   if (!current)
-    return err("verify_upstream", "upsream_addrinfo is NULL");
+    return err("verify_upstream", "Upstream address info is NULL");
 
   do {
     if ((*upstream_fd = socket(current->ai_family, current->ai_socktype,
@@ -237,7 +237,7 @@ bool start_proxy(int epoll_fd) {
                event.events & EPOLLOUT) // send to upstream
         puts("Ready to send to upstream");
       else
-        err("verify_vaildate_data", "unknown event data");
+        err("verify_vaildate_data", "Unknown event data");
     }
   }
 

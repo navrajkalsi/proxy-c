@@ -1,4 +1,3 @@
-#include <asm-generic/errno-base.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -6,7 +5,98 @@
 #include <string.h>
 #include <time.h>
 
+#include "main.h"
 #include "utils.h"
+
+Str str_data_malloc(const char *in) {
+  return !in ? ERR_STR
+             : (Str){.data = strdup(in), .len = (ptrdiff_t)strlen(in)};
+}
+
+Str *str_malloc(const char *in) {
+  Str *ret = (Str *)malloc(sizeof *ret);
+
+  if (!ret) {
+    err("malloc", strerror(errno));
+    return NULL;
+  }
+
+  ret->data = in ? strdup(in) : NULL;
+  ret->len = in ? (ptrdiff_t)strlen(in) : 0;
+
+  return ret;
+}
+
+void str_data_free(Str *in) {
+  if (!in || !in->data || !in->len)
+    return;
+
+  free(in->data);
+  in->data = NULL;
+  in->len = 0;
+}
+
+void str_free(Str **in) {
+  if (!in || !*in)
+    return;
+
+  str_data_free(*in);
+  free(*in);
+  *in = NULL;
+}
+
+void str_print(const Str *in) {
+  if (in)
+    printf("%.*s\n", (int)in->len, in->data);
+}
+
+bool equals(const Str *a, const Str *b) {
+  return a->len == b->len && !memcmp(a->data, b->data, (size_t)(a->len));
+}
+
+// returns 0 len str in case of error
+Str takehead(Str str, ptrdiff_t take) {
+  if (!str.data || str.len < 0)
+    return ERR_STR;
+
+  str.len = take > str.len ? str.len : take;
+  return str;
+}
+
+Str drophead(Str str, ptrdiff_t drop) {
+  if (!str.data || str.len < 0 || drop > str.len)
+    return ERR_STR;
+
+  str.data += drop;
+  str.len -= drop;
+  return str;
+}
+
+Cut cut(Str str, char sep) {
+  ptrdiff_t pos = 0;
+
+  while (pos < str.len && str.data[pos] != sep)
+    pos++;
+
+  Cut ret = {};
+  ret.found = pos < str.len;
+  ret.head = takehead(str, pos);
+  ret.tail = drophead(str, pos + ret.found);
+
+  return ret;
+}
+
+ptrdiff_t contains(const Str *str, const char *chars) {
+  ptrdiff_t len = (ptrdiff_t)strlen(chars);
+  if (!str->len || !str->data || !len || len > str->len)
+    return -1;
+
+  for (int i = 0; i < str->len - len; i++)
+    if (memcmp(str->data + i, chars, (size_t)len) == 0)
+      return i;
+
+  return -1;
+}
 
 // error linked list head and tail nodes
 ErrorNode *error_head = NULL, *error_tail = NULL;

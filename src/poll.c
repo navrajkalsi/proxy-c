@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "main.h"
 #include "poll.h"
 #include "utils.h"
 
@@ -36,6 +37,7 @@ Connection *init_connection(void) {
   result->client_fd = result->upstream_fd = -1;
   result->operation = CLIENT_READ; // new connection would only be requested if
                                    // reading from a new client fd
+  result->client_request = result->upstream_response = ERR_STR;
   return result;
 }
 
