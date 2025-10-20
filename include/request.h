@@ -10,3 +10,6 @@ bool validate_request(Connection *conn);
 
 // takes in the value of host header and also compares it to the upstream
 bool validate_host(const Str *header);
+
+// for logging request to stdout
+void print_request(const Connection *conn);

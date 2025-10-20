@@ -124,8 +124,6 @@ bool setup_epoll(int proxy_fd, int *epoll_fd) {
   if (!add_to_epoll(*epoll_fd, data, EPOLLIN))
     return err("add_to_epoll", NULL);
 
-  print_active_num();
-
   return true;
 }
 
@@ -244,13 +242,9 @@ bool start_proxy(int epoll_fd) {
     }
   }
 
-  print_active_num();
-
   puts("\nShutting Down\n");
   free_upstream_addrinfo();
   free_active_conns();
-
-  print_active_num();
 
   return true;
 }

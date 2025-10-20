@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 
 #include "main.h"
 #include "utils.h"
@@ -29,7 +30,8 @@ typedef struct event_data {
 // this will be the pointer that is added to epoll data
 typedef struct connection {
   char client_buffer[BUFFER_SIZE], upstream_buffer[BUFFER_SIZE];
-  Str client_request, upstream_response, client_status;
+  struct sockaddr_storage client_addr;
+  Str client_request, upstream_response, client_status, request_host;
   Operation operation;
   int client_fd, upstream_fd;
 } Connection;

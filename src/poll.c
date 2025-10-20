@@ -22,6 +22,7 @@ EventData *init_event_data(DataType data_type, epoll_data_t data) {
   if (!activate_event(result)) {
     err("activate_event",
         errno ? strerror(errno) : "Max limit of active connections reached");
+    free(result);
     return NULL;
   }
 
@@ -32,10 +33,11 @@ void free_event_data(EventData **event_data) {
   if (!event_data || !*event_data)
     return;
 
+  EventData *to_free = *event_data;
   deactivate_event(*event_data);
 
-  free(*event_data);
-  *event_data = NULL;
+  free(to_free);
+  to_free = NULL;
 };
 
 Connection *init_connection(void) {
@@ -50,6 +52,7 @@ Connection *init_connection(void) {
                                    // reading from a new client fd
   result->client_request = result->upstream_response = result->client_status =
       ERR_STR;
+  memset(&result->client_addr, 0, sizeof(struct sockaddr_storage));
   return result;
 }
 
@@ -65,8 +68,9 @@ void free_event_conn(EventData **event_data) {
   if (!event_data || !*event_data)
     return;
 
-  if ((*event_data)->data_type != TYPE_FD && (*event_data)->data.ptr)
-    free_connection((Connection **)&(*event_data)->data.ptr);
+  Connection *conn = (*event_data)->data.ptr;
+  if ((*event_data)->data_type != TYPE_FD)
+    free_connection(&conn);
 
   free_event_data(event_data);
 }
@@ -89,6 +93,7 @@ void deactivate_event(EventData *event_data) {
   if (!event_data)
     return;
 
+  *(event_data->self_ptr) = NULL;
   event_data->self_ptr = NULL;
 }
 

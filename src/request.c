@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -6,6 +7,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "main.h"
@@ -82,6 +84,9 @@ bool handle_request(const EventData *event_data) {
   // while (equals(&client->connection, &STR("keep-alive")));
 
   validate_request(conn);
+
+  print_request(conn);
+
   return true;
 }
 
@@ -112,9 +117,10 @@ bool validate_request(Connection *conn) {
   while (isspace(*++host_ptr) && host_ptr < host_end)
     ;
 
-  const Str host_header = {.data = host_ptr, .len = host_end - host_ptr};
+  conn->request_host.data = host_ptr;
+  conn->request_host.len = host_end - host_ptr;
 
-  if (!validate_host(&host_header)) {
+  if (!validate_host(&conn->request_host)) {
     conn->client_status = STR("301 Moved Permanently");
     return err("validate_host", NULL);
   }
@@ -170,4 +176,31 @@ bool validate_host(const Str *header) {
 
   header->data[header->len] = org_end;
   return true;
+}
+
+void print_request(const Connection *conn) {
+  if (!conn)
+    return;
+
+  // just request line
+  char *request_line = conn->client_request.data;
+  if (!request_line)
+    return;
+
+  char ip_str[INET6_ADDRSTRLEN];
+  if (!inet_ntop(AF_INET6,
+                 &(((struct sockaddr_in6 *)&conn->client_addr)->sin6_addr),
+                 ip_str, sizeof ip_str))
+    err("inet_ntop", strerror(errno));
+  else
+    printf("(%s) ", ip_str);
+
+  while (*request_line != '\r' && *request_line != '\n' &&
+         *request_line != '\0')
+    putchar(*request_line++);
+
+  putchar(' ');
+
+  // host
+  str_print(&conn->request_host);
 }
