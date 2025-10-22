@@ -48,7 +48,7 @@ bool accept_client(int proxy_fd, int epoll_fd) {
       return err("set_non_block", strerror(errno));
     }
 
-    if (!add_to_epoll(epoll_fd, data, EPOLLIN)) {
+    if (!add_to_epoll(epoll_fd, data, EPOLLIN | EPOLLONESHOT)) {
       free_event_conn(&data);
       return err("add_to_epoll", strerror(errno));
     }

@@ -11,6 +11,7 @@
 #include "poll.h"
 #include "proxy.h"
 #include "request.h"
+#include "response.h"
 #include "utils.h"
 
 // possible ways to connect to upstream
@@ -226,8 +227,10 @@ bool start_proxy(int epoll_fd) {
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
                  event.events & EPOLLIN) { // read from client
         puts("Ready to read from client");
-        if (!handle_request(event_data))
+        if (!handle_request(event_data)) {
           err("handle_request", NULL);
+          write_error_response(event_data);
+        }
       } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                  event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
@@ -257,5 +260,5 @@ void free_upstream_addrinfo(void) {
 void free_active_conns(void) {
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
     if (active_conns[i])
-      free_event_conn(&active_conns[i]);
+      free_event_conn(active_conns + i);
 }

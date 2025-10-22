@@ -19,7 +19,7 @@ bool handle_request(const EventData *event_data) {
   if (!event_data)
     return set_efault();
 
-  Connection *conn = (Connection *)event_data->data.ptr;
+  Connection *conn = event_data->data.ptr;
 
   // event_data SHOULD ALWAYS contain the data as a pointer to a conn
   assert(event_data->data_type == TYPE_PTR_CLIENT);
@@ -83,25 +83,41 @@ bool handle_request(const EventData *event_data) {
   // Only parsing (handle_request) if the request line is present
   // while (equals(&client->connection, &STR("keep-alive")));
 
-  validate_request(conn);
+  if (!validate_request(conn))
+    err("validate_request", strerror(errno));
 
   print_request(conn);
 
-  return true;
+  if (equals(&conn->client_status, &STR("200 OK")))
+    return true;
+  else
+    return false;
 }
 
 bool validate_request(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  const Str request = conn->client_request;
+  Str request = conn->client_request;
+  Cut c = cut(request, ' ');
 
-  // just verifying beginning of request header
-  if (request.len < (uint)sizeof "GET" ||
-      memcmp(request.data, "GET ", 4) != 0) {
+  // verifying method
+  if (!c.found) {
+    conn->client_status = STR("400 Bad Request");
+    return err("validate_method", "Invalid request");
+  } else if (!equals(&c.head, &STR("GET"))) {
     conn->client_status = STR("405 Method Not Allowed");
     return err("validate_method", "Invalid method");
   }
+
+  // finding request path
+  c = cut(c.tail, ' ');
+
+  if (!c.found) {
+    conn->client_status = STR("400 Bad Request");
+    return err("validate_path", "Invalid request");
+  }
+  conn->request_path = c.head;
 
   // finding the host header
   char *host_ptr = strcasestr(request.data, "Host"),
@@ -122,14 +138,14 @@ bool validate_request(Connection *conn) {
 
   if (!validate_host(&conn->request_host)) {
     conn->client_status = STR("301 Moved Permanently");
-    return err("validate_host", NULL);
+    return err("validate_host", "Different host in the request header");
   }
 
   // if client_status is NULL now, the host is identical to the upstream url and
-  // can request the upstream, else serve appropriate error code
+  // can request the upstream,
+  // else serve appropriate error code directly to the client
   conn->client_status = ASSIGN_IF_NULL(conn->client_status, "200 OK");
 
-  str_print(&conn->client_status);
   return true;
 }
 
@@ -193,7 +209,7 @@ void print_request(const Connection *conn) {
                  ip_str, sizeof ip_str))
     err("inet_ntop", strerror(errno));
   else
-    printf("(%s) ", ip_str);
+    printf("\n(%s) ", ip_str);
 
   while (*request_line != '\r' && *request_line != '\n' &&
          *request_line != '\0')
@@ -203,4 +219,5 @@ void print_request(const Connection *conn) {
 
   // host
   str_print(&conn->request_host);
+  putchar('\n');
 }
