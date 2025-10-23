@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,10 +48,9 @@ Connection *init_connection(void) {
   }
 
   result->client_fd = result->upstream_fd = -1;
-  result->operation = CLIENT_READ; // new connection would only be requested if
-                                   // reading from a new client fd
-  result->client_request = result->upstream_response = result->client_status =
-      ERR_STR;
+  result->client_status = 0;
+  result->client_request = result->upstream_response = result->request_host =
+      result->request_path = result->http_ver = ERR_STR;
   memset(&result->client_addr, 0, sizeof(struct sockaddr_storage));
   return result;
 }

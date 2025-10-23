@@ -7,7 +7,8 @@
 
 // global var that stores a linked list of struct addrinfo containing info about
 // upstream server
-extern struct addrinfo *upstream_addrinfo;
+// static struct addrinfo *upstream_addrinfo;
+
 // global array of eventData structs that were added to the epoll table
 // init_event_data() & free_event_data() add and remove from this array
 // automatically

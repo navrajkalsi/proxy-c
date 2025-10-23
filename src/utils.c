@@ -51,8 +51,8 @@ void str_print(const Str *in) {
     printf("%.*s\n", (int)in->len, in->data);
 }
 
-bool equals(const Str *a, const Str *b) {
-  return a->len == b->len && !memcmp(a->data, b->data, (size_t)(a->len));
+bool equals(const Str a, const Str b) {
+  return a.len == b.len && !memcmp(a.data, b.data, (size_t)(a.len));
 }
 
 // returns 0 len str in case of error
@@ -191,9 +191,9 @@ bool err(const char *function, const char *error) {
   // functions enqueued to error_list, those errors will not be required any
   // more
   free_error_list();
-  if (function && error)
+  if (function && error && strcmp(error, strerror(0)))
     fprintf(stderr, "%s(): %s\n", function, error);
-  else if (function && !error)
+  else if (function)
     fprintf(stderr, "%s()\n", function);
   else
     fputs("Unknown error", stderr);
@@ -252,4 +252,30 @@ void print_active_num(void) {
       active++;
 
   printf("Num of active connections: %d\n", active);
+}
+
+char *get_status_string(int status_code) {
+  // these strings live for the entire life of the program
+  switch (status_code) {
+  case 200:
+    return "200 OK";
+  case 301:
+    return "301 Moved Permanently";
+  case 400:
+    return "400 Bad Request";
+  case 403:
+    return "403 Forbidden";
+  case 404:
+    return "404 Not Found";
+  case 405:
+    return "405 Method Not Allowed";
+  case 431:
+    return "431 Request Header Fields Too Large";
+  case 500:
+    return "500 Internal Server Error";
+  case 505:
+    return "505 HTTP Version Not Supported";
+  }
+
+  return "500 Internal Server Error";
 }

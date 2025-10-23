@@ -30,7 +30,7 @@ void str_free(Str **in);
 void str_print(const Str *in);
 
 // strcmp like
-bool equals(const Str *a, const Str *b);
+bool equals(const Str a, const Str b);
 
 // returns Str which points to starting of str but with take len, if possible
 Str takehead(Str str, ptrdiff_t take);
@@ -85,3 +85,5 @@ void handle_sigpipe(int sig);
 
 // prints number of active connections
 void print_active_num(void);
+
+char *get_status_string(int status_code);

@@ -10,12 +10,10 @@
 #include "main.h"
 #include "poll.h"
 #include "proxy.h"
-#include "request.h"
-#include "response.h"
 #include "utils.h"
 
 // possible ways to connect to upstream
-struct addrinfo *upstream_addrinfo = NULL;
+static struct addrinfo *upstream_addrinfo = NULL;
 EventData *active_conns[MAX_CONNECTIONS] = {0};
 
 bool setup_proxy(Config *config, int *proxy_fd) {
@@ -164,7 +162,7 @@ bool connect_upstream(int *upstream_fd) {
     // Have to setsocketopt to allow dual-stack setup supporting both IPv4 & v6
     if (setsockopt(*upstream_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
                    sizeof(int)) == -1) {
-      *upstream_fd = -2; // setsockopt errors
+      *upstream_fd = -2;
       goto close;
     }
 
@@ -227,10 +225,8 @@ bool start_proxy(int epoll_fd) {
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
                  event.events & EPOLLIN) { // read from client
         puts("Ready to read from client");
-        if (!handle_request(event_data)) {
+        if (!handle_request_client(event_data))
           err("handle_request", NULL);
-          write_error_response(event_data);
-        }
       } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                  event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");

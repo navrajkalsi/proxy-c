@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include "args.h"
-#include "poll.h"
 #include "proxy.h"
 #include "utils.h"
 
@@ -29,7 +28,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (!setup_epoll(proxy_fd, &epoll_fd)) {
-    err("setup_async", strerror(errno));
+    err("setup_epoll", strerror(errno));
     return -1;
   }
 
