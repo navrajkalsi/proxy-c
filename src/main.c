@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
 
   // loading server info, into global var in proxy.c
   if (!setup_upstream(config.upstream)) {
-    err("setup_upstream", strerror(errno));
+    err("setup_upstream", NULL);
     return -1;
   }
 

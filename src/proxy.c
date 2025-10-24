@@ -135,16 +135,16 @@ bool setup_upstream(const char *upstream) {
   hints.ai_family = AF_INET6;
   hints.ai_socktype = SOCK_STREAM;
 
-  int status = errno = 0;
+  int status = 0;
   // targetting port based on the protocol of the upstream
   if ((status =
            getaddrinfo(upstream, !memcmp("https", upstream, 5) ? "443" : "80",
-                       &hints, &upstream_addrinfo)) == -1) {
-    if (!errno)
-      return err("getaddrinfo", gai_strerror(status));
-    else
-      return err("getaddrinfo", "Getting host info");
-  }
+                       &hints, &upstream_addrinfo)) != 0)
+    return err("getaddrinfo", gai_strerror(status));
+
+  // getaddrinfo() makes system calls that may sometime set errno, even if the
+  // getaddrinfo returns 0
+  errno = 0;
 
   return true;
 }
@@ -226,7 +226,7 @@ bool start_proxy(int epoll_fd) {
                  event.events & EPOLLIN) { // read from client
         puts("Ready to read from client");
         if (!handle_request_client(event_data))
-          err("handle_request", NULL);
+          err("handle_request_client", NULL);
       } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                  event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");

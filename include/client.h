@@ -24,3 +24,7 @@ bool handle_response_client(const EventData *event_data);
 bool generate_response(Connection *conn);
 
 bool generate_error_response(Connection *conn);
+
+bool validate_method(const Str method);
+
+bool validate_http(const Str http_ver);

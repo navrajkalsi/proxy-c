@@ -192,11 +192,11 @@ bool err(const char *function, const char *error) {
   // more
   free_error_list();
   if (function && error && strcmp(error, strerror(0)))
-    fprintf(stderr, "%s(): %s\n", function, error);
+    fprintf(stderr, "\033[1;31m%s()\033[0m: %s\n", function, error);
   else if (function)
-    fprintf(stderr, "%s()\n", function);
+    fprintf(stderr, "\033[1;31m%s()\033[0m\n", function);
   else
-    fputs("Unknown error", stderr);
+    fputs("\033[1;31mUnknown error\033[0m", stderr);
 
   return false;
 }

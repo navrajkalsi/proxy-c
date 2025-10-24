@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <regex.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -155,7 +156,7 @@ bool validate_request(Connection *conn) {
   if (!c.found) {
     conn->client_status = 400;
     return err("validate_method", "Invalid request");
-  } else if (!equals(c.head, STR("GET"))) {
+  } else if (!validate_method(c.head)) {
     conn->client_status = 405;
     return err("validate_method", "Invalid method");
   }
@@ -175,8 +176,12 @@ bool validate_request(Connection *conn) {
   if (!c.found) {
     conn->client_status = 400;
     return err("validate_http_ver", "Invalid request");
+  } else if (!validate_http(c.head)) {
+    conn->http_ver = STR("HTTP/1.1");
+    conn->client_status = 500;
+    return err("validate_http", "Invalid HTTP version");
   }
-  conn->request_path = c.head;
+  conn->http_ver = c.head;
 
   // finding the host header
   char *host_ptr = strcasestr(request.data, "Host"),
@@ -288,9 +293,17 @@ bool handle_response_client(const EventData *event_data) {
   Connection *conn = event_data->data.ptr;
 
   if (conn->client_status == 200)
-    generate_response(conn);
+    // generate_response(conn);
+    puts("200");
   else
     generate_error_response(conn);
+
+  return true;
+}
+
+bool generate_response(Connection *conn) {
+  if (!conn)
+    return set_efault();
 
   return true;
 }
@@ -300,4 +313,14 @@ bool generate_error_response(Connection *conn) {
     return set_efault();
 
   return true;
+}
+
+bool validate_method(const Str method) { return equals(method, STR("GET")); }
+
+bool validate_http(const Str http_ver) {
+  if (equals(http_ver, STR("HTTP/1.0")) || equals(http_ver, STR("HTTP/1.1")) ||
+      equals(http_ver, STR("HTTP/2")) || equals(http_ver, STR("HTTP/3")))
+    return true;
+
+  return false;
 }
