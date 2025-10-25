@@ -1,10 +1,8 @@
 #include <arpa/inet.h>
 #include <assert.h>
-#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <regex.h>
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -12,6 +10,7 @@
 #include <unistd.h>
 
 #include "client.h"
+#include "http.h"
 #include "main.h"
 #include "poll.h"
 #include "utils.h"
@@ -145,147 +144,6 @@ bool handle_request_client(const EventData *event_data) {
     return false;
 }
 
-bool validate_request(Connection *conn) {
-  if (!conn)
-    return set_efault();
-
-  Str request = conn->client_request;
-  Cut c = cut(request, ' ');
-
-  // verifying method
-  if (!c.found) {
-    conn->client_status = 400;
-    return err("validate_method", "Invalid request");
-  } else if (!validate_method(c.head)) {
-    conn->client_status = 405;
-    return err("validate_method", "Invalid method");
-  }
-
-  // finding request path
-  c = cut(c.tail, ' ');
-
-  if (!c.found) {
-    conn->client_status = 400;
-    return err("validate_path", "Invalid request");
-  }
-  conn->request_path = c.head;
-
-  // finding http version
-  c = cut(c.tail, ' ');
-
-  if (!c.found) {
-    conn->client_status = 400;
-    return err("validate_http_ver", "Invalid request");
-  } else if (!validate_http(c.head)) {
-    conn->http_ver = STR("HTTP/1.1");
-    conn->client_status = 500;
-    return err("validate_http", "Invalid HTTP version");
-  }
-  conn->http_ver = c.head;
-
-  // finding the host header
-  char *host_ptr = strcasestr(request.data, "Host"),
-       *host_end = !host_ptr ? NULL : strchr(host_ptr, '\r');
-
-  if (!host_ptr || !host_end || !(host_ptr = strchr(host_ptr, ':'))) {
-    conn->client_status = 400;
-    return err("validate_host", "Host header not found");
-  }
-
-  // right now host_ptr is pointing to ':'
-  // incrementing to point to the first char of the value
-  while (isspace(*++host_ptr) && host_ptr < host_end)
-    ;
-
-  conn->request_host.data = host_ptr;
-  conn->request_host.len = host_end - host_ptr;
-
-  if (!validate_host(&conn->request_host)) {
-    conn->client_status = 301;
-    return err("validate_host", "Different host in the request header");
-  }
-
-  // if client_status is NULL now, the host is identical to the upstream url and
-  // can request the upstream,
-  // else serve appropriate error code directly to the client
-  conn->client_status = 200;
-
-  return true;
-}
-
-bool validate_host(const Str *header) {
-  if (!header)
-    return set_efault();
-
-  // limitations of the check, for now:
-  // does not support: direct ips
-
-  regex_t regex;
-  memset(&regex, 0, sizeof regex);
-  int status = 0;
-  char error_string[256];
-
-  if ((status = regcomp(&regex, ORIGIN_REGEX,
-                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
-    regerror(status, &regex, error_string, sizeof error_string);
-    return err("regcomp", error_string);
-  }
-
-  // tmp null termination
-  char org_end = header->data[header->len];
-  header->data[header->len] = '\0';
-  if ((status = regexec(&regex, header->data, 0, NULL, 0)) != 0) {
-    regerror(status, &regex, error_string, sizeof error_string);
-    regfree(&regex);
-    header->data[header->len] = org_end;
-    return err("regexec", error_string);
-  }
-
-  regfree(&regex);
-
-  // comparing it to the upstream
-  size_t to_compare =
-      header->data[header->len] == '/' ? header->len - 1 : header->len;
-
-  if ((size_t)header->len < to_compare ||
-      strlen(config.upstream) < to_compare ||
-      memcmp(header->data, config.upstream, to_compare) != 0) {
-    header->data[header->len] = org_end;
-    return false;
-  }
-
-  header->data[header->len] = org_end;
-  return true;
-}
-
-void print_request(const Connection *conn) {
-  if (!conn)
-    return;
-
-  // just request line
-  char *request_line = conn->client_request.data;
-  if (!request_line)
-    return;
-
-  char ip_str[INET6_ADDRSTRLEN];
-  if (!inet_ntop(AF_INET6,
-                 &(((struct sockaddr_in6 *)&conn->client_addr)->sin6_addr),
-                 ip_str, sizeof ip_str))
-    err("inet_ntop", strerror(errno));
-  else
-    printf("\n(%s) ", ip_str);
-
-  while (*request_line != '\r' && *request_line != '\n' &&
-         *request_line != '\0')
-    putchar(*request_line++);
-
-  putchar(' ');
-
-  // host
-  str_print(&conn->request_host);
-  putchar('\n');
-}
-
 bool handle_response_client(const EventData *event_data) {
   if (!event_data)
     return set_efault();
@@ -313,14 +171,4 @@ bool generate_error_response(Connection *conn) {
     return set_efault();
 
   return true;
-}
-
-bool validate_method(const Str method) { return equals(method, STR("GET")); }
-
-bool validate_http(const Str http_ver) {
-  if (equals(http_ver, STR("HTTP/1.0")) || equals(http_ver, STR("HTTP/1.1")) ||
-      equals(http_ver, STR("HTTP/2")) || equals(http_ver, STR("HTTP/3")))
-    return true;
-
-  return false;
 }

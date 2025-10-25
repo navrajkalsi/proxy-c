@@ -20,6 +20,9 @@
   "\\/?$"
 #endif
 
+// http.h specific
+#define FALLBACK_HTTP_VER "HTTP/1.1"
+
 // utils.h specific
 #ifndef TERMINAL_WIDTH
 #define TERMINAL_WIDTH 80

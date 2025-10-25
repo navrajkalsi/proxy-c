@@ -24,7 +24,8 @@ typedef struct event_data {
 typedef struct connection {
   char client_buffer[BUFFER_SIZE], upstream_buffer[BUFFER_SIZE];
   struct sockaddr_storage client_addr;
-  Str client_request, upstream_response, request_host, request_path, http_ver;
+  Str client_request, upstream_response, request_host, request_path, http_ver,
+      connection;
   int client_fd, upstream_fd, client_status;
 } Connection;
 

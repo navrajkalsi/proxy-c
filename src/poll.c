@@ -49,8 +49,9 @@ Connection *init_connection(void) {
 
   result->client_fd = result->upstream_fd = -1;
   result->client_status = 0;
+  result->http_ver = STR(FALLBACK_HTTP_VER);
   result->client_request = result->upstream_response = result->request_host =
-      result->request_path = result->http_ver = ERR_STR;
+      result->request_path = result->connection = ERR_STR;
   memset(&result->client_addr, 0, sizeof(struct sockaddr_storage));
   return result;
 }
