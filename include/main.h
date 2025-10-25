@@ -22,6 +22,7 @@
 
 // http.h specific
 #define FALLBACK_HTTP_VER "HTTP/1.1"
+#define DATE_LEN 30 // len of date + a null terminator
 
 // utils.h specific
 #ifndef TERMINAL_WIDTH

@@ -254,28 +254,18 @@ void print_active_num(void) {
   printf("Num of active connections: %d\n", active);
 }
 
-char *get_status_string(int status_code) {
-  // these strings live for the entire life of the program
-  switch (status_code) {
-  case 200:
-    return "200 OK";
-  case 301:
-    return "301 Moved Permanently";
-  case 400:
-    return "400 Bad Request";
-  case 403:
-    return "403 Forbidden";
-  case 404:
-    return "404 Not Found";
-  case 405:
-    return "405 Method Not Allowed";
-  case 431:
-    return "431 Request Header Fields Too Large";
-  case 500:
-    return "500 Internal Server Error";
-  case 505:
-    return "505 HTTP Version Not Supported";
-  }
+// does not handle 0 & only works for positive num
+void int_to_string(int num, char *out) {
+  static ptrdiff_t pos =
+      0; // the chars have to be written from the beginning, therefore this
+         // would serve as the index where the char would go
 
-  return "500 Internal Server Error";
+  pos = 0; // may have a value from previous calls
+
+  // base case, when last single int is divided by 10, 0 is returned
+  if (!num)
+    return;
+
+  int_to_string(num / 10, out);
+  *(out + pos++) = (char)((num % 10) + '0');
 }

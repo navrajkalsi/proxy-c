@@ -117,10 +117,13 @@ bool handle_request_client(const EventData *event_data) {
     // just not a valid request probably (bad request) looking for a
     // linebreak
     // "\r\n" for request line
-    if (strstr(buf, LINEBREAK.data))
+    if (strstr(buf, LINEBREAK.data)) {
+      conn->client_status = 431;
       return err("verify_request", "Request headers too large");
-    else
+    } else {
+      conn->client_status = 400;
       return err("verify_request", "Bad request");
+    }
   } else
     return err("read", strerror(errno));
 
@@ -154,7 +157,7 @@ bool handle_response_client(const EventData *event_data) {
     // generate_response(conn);
     puts("200");
   else
-    generate_error_response(conn);
+    write_error_response(conn);
 
   return true;
 }
@@ -166,9 +169,45 @@ bool generate_response(Connection *conn) {
   return true;
 }
 
-bool generate_error_response(Connection *conn) {
+bool write_error_response(Connection *conn) {
   if (!conn)
     return set_efault();
 
+  if (!write_headers(conn))
+    return err("write_headers", NULL);
+
   return true;
+}
+
+bool write_headers(Connection *conn) {
+  if (!conn)
+    return set_efault();
+
+  char date_data[DATE_LEN];
+  Str date_header = {.data = date_data, .len = DATE_LEN};
+
+  if (!set_date(&date_header))
+    return err("set_date", NULL);
+
+  Str error_body_start = STR(
+      "<html>\n<head>\n<title>Error</title>\n</head>\n<body>\n<center><h1>");
+
+  Str error_body_end =
+      STR("</h1></center>\n<hr><center>Proxy-C</center>\n</body>\n</html>");
+
+  Str status_str = get_status_str(conn->client_status);
+
+  size_t body_size = error_body_start.len + error_body_end.len + status_str.len;
+
+  // calculating number of bytes required to hold the final length
+  // mostly will be 3, still checking
+  int divisor = 1, num_of_digits = 0;
+  while (body_size / divisor > 0 && ++num_of_digits)
+    divisor *= 10;
+
+  char content_len_data[num_of_digits] = {0};
+
+  int_to_string(body_size, content_len_data);
+  if (!content_len_data[0])
+    return err("int_to_string", NULL);
 }

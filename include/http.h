@@ -19,5 +19,13 @@ bool validate_http(const Str http_ver);
 bool get_header_value(const char *headers, const char *header_name,
                       Str *header_value);
 
+// date.data should point to a memory of DATE_LEN bytes
+// this function does not malloc!
+bool set_date(Str *date);
+
 // for logging request to stdout
 void print_request(const Connection *conn);
+
+char *get_status_string(int status_code);
+
+Str get_status_str(int status_code);

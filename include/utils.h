@@ -86,4 +86,7 @@ void handle_sigpipe(int sig);
 // prints number of active connections
 void print_active_num(void);
 
-char *get_status_string(int status_code);
+// out should point to a memory that can hold the final string
+// check before if num is 0, the function does not handle 0 as num
+// this function does not malloc!
+void int_to_string(int num, char *out);

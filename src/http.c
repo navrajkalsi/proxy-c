@@ -5,6 +5,7 @@
 #include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "http.h"
@@ -150,6 +151,21 @@ bool get_header_value(const char *headers, const char *header_name,
   return true;
 }
 
+bool set_date(Str *date) {
+  if (!date || !date->data)
+    return set_efault();
+
+  date->len = DATE_LEN - 1;
+
+  time_t now = time(NULL);
+  struct tm tm;
+  gmtime_r(&now, &tm);
+
+  // strftime returns 0 if write buffer is small
+  return (bool)strftime(date->data, (size_t)DATE_LEN,
+                        "%a, %d %b %Y %H:%M:%S GMT", &tm);
+}
+
 void print_request(const Connection *conn) {
   if (!conn)
     return;
@@ -176,4 +192,56 @@ void print_request(const Connection *conn) {
   // host
   str_print(&conn->request_host);
   putchar('\n');
+}
+
+char *get_status_string(int status_code) {
+  // these strings live for the entire life of the program
+  switch (status_code) {
+  case 200:
+    return "200 OK";
+  case 301:
+    return "301 Moved Permanently";
+  case 400:
+    return "400 Bad Request";
+  case 403:
+    return "403 Forbidden";
+  case 404:
+    return "404 Not Found";
+  case 405:
+    return "405 Method Not Allowed";
+  case 431:
+    return "431 Request Header Fields Too Large";
+  case 500:
+    return "500 Internal Server Error";
+  case 505:
+    return "505 HTTP Version Not Supported";
+  }
+
+  return "500 Internal Server Error";
+}
+
+Str get_status_str(int status_code) {
+  // these strings live for the entire life of the program
+  switch (status_code) {
+  case 200:
+    return STR("200 OK");
+  case 301:
+    return STR("301 Moved Permanently");
+  case 400:
+    return STR("400 Bad Request");
+  case 403:
+    return STR("403 Forbidden");
+  case 404:
+    return STR("404 Not Found");
+  case 405:
+    return STR("405 Method Not Allowed");
+  case 431:
+    return STR("431 Request Header Fields Too Large");
+  case 500:
+    return STR("500 Internal Server Error");
+  case 505:
+    return STR("505 HTTP Version Not Supported");
+  }
+
+  return STR("500 Internal Server Error");
 }

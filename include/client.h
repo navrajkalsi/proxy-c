@@ -14,4 +14,7 @@ bool handle_response_client(const EventData *event_data);
 
 bool generate_response(Connection *conn);
 
-bool generate_error_response(Connection *conn);
+// to send an error directly without contacting upstream
+bool write_error_response(Connection *conn);
+
+bool write_headers(Connection *conn);
