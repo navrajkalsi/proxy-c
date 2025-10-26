@@ -4,7 +4,7 @@
 
 #include "args.h"
 
-#define VERSION "0.2"
+#define VERSION "0.5"
 
 // args.h specific
 #ifndef DEFAULT_PORT
@@ -22,6 +22,7 @@
 
 // http.h specific
 #define FALLBACK_HTTP_VER "HTTP/1.1"
+#define SERVER "Proxy-C/" VERSION " (Unix)"
 #define DATE_LEN 30 // len of date + a null terminator
 
 // utils.h specific
@@ -43,6 +44,7 @@
 // request.h specific
 #define TRAILER STR("\r\n\r\n")
 #define LINEBREAK STR("\r\n")
+#define SPACE STR(" ")
 // only to assign the string literal to str.data if str.data is null
 #define ASSIGN_IF_NULL(str, literal) !str.data ? STR(literal) : str
 

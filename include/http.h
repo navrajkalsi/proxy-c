@@ -23,6 +23,9 @@ bool get_header_value(const char *headers, const char *header_name,
 // this function does not malloc!
 bool set_date(Str *date);
 
+// finds connection header and respects its value
+bool set_connection(Connection *conn);
+
 // for logging request to stdout
 void print_request(const Connection *conn);
 

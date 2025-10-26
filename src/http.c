@@ -39,7 +39,7 @@ bool validate_request(Connection *conn) {
   conn->request_path = c.head;
 
   // finding http version
-  c = cut(c.tail, ' ');
+  c = cut(c.tail, '\r');
 
   if (!c.found) {
     conn->client_status = 400;
@@ -110,6 +110,7 @@ bool validate_host(const Str *header) {
 bool validate_method(const Str method) { return equals(method, STR("GET")); }
 
 bool validate_http(const Str http_ver) {
+  str_print(&http_ver);
   if (equals(http_ver, STR("HTTP/1.0")) || equals(http_ver, STR("HTTP/1.1")) ||
       equals(http_ver, STR("HTTP/2")) || equals(http_ver, STR("HTTP/3")))
     return true;
@@ -164,6 +165,23 @@ bool set_date(Str *date) {
   // strftime returns 0 if write buffer is small
   return (bool)strftime(date->data, (size_t)DATE_LEN,
                         "%a, %d %b %Y %H:%M:%S GMT", &tm);
+}
+
+bool set_connection(Connection *conn) {
+  if (!conn)
+    return set_efault();
+
+  if (get_header_value(conn->client_request.data, "Connection",
+                       &conn->connection))
+    return true;
+
+  if (equals(conn->http_ver, STR("HTTP/1.0")) ||
+      equals(conn->http_ver, STR("HTTP/0.9")))
+    conn->connection = STR("close");
+  else
+    conn->connection = STR("keep-alive");
+
+  return true;
 }
 
 void print_request(const Connection *conn) {

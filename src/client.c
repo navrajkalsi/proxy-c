@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <regex.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -137,14 +138,16 @@ bool handle_request_client(const EventData *event_data) {
   // while (equals(&client->connection, &STR("keep-alive")));
 
   if (!validate_request(conn))
-    err("validate_request", strerror(errno));
+    err("validate_request", NULL);
 
   print_request(conn);
 
   if (conn->client_status == 200)
     return true;
-  else
+  else {
+    write_error_response(conn);
     return false;
+  }
 }
 
 bool handle_response_client(const EventData *event_data) {
@@ -154,7 +157,6 @@ bool handle_response_client(const EventData *event_data) {
   Connection *conn = event_data->data.ptr;
 
   if (conn->client_status == 200)
-    // generate_response(conn);
     puts("200");
   else
     write_error_response(conn);
@@ -162,24 +164,7 @@ bool handle_response_client(const EventData *event_data) {
   return true;
 }
 
-bool generate_response(Connection *conn) {
-  if (!conn)
-    return set_efault();
-
-  return true;
-}
-
 bool write_error_response(Connection *conn) {
-  if (!conn)
-    return set_efault();
-
-  if (!write_headers(conn))
-    return err("write_headers", NULL);
-
-  return true;
-}
-
-bool write_headers(Connection *conn) {
   if (!conn)
     return set_efault();
 
@@ -189,6 +174,9 @@ bool write_headers(Connection *conn) {
   if (!set_date(&date_header))
     return err("set_date", NULL);
 
+  if (!set_connection(conn))
+    return err("set_connection", NULL);
+
   Str error_body_start = STR(
       "<html>\n<head>\n<title>Error</title>\n</head>\n<body>\n<center><h1>");
 
@@ -197,7 +185,8 @@ bool write_headers(Connection *conn) {
 
   Str status_str = get_status_str(conn->client_status);
 
-  size_t body_size = error_body_start.len + error_body_end.len + status_str.len;
+  ptrdiff_t body_size =
+      error_body_start.len + error_body_end.len + status_str.len;
 
   // calculating number of bytes required to hold the final length
   // mostly will be 3, still checking
@@ -205,9 +194,63 @@ bool write_headers(Connection *conn) {
   while (body_size / divisor > 0 && ++num_of_digits)
     divisor *= 10;
 
-  char content_len_data[num_of_digits] = {0};
+  char content_len_data[num_of_digits];
+  memset(content_len_data, 0, num_of_digits);
 
   int_to_string(body_size, content_len_data);
   if (!content_len_data[0])
     return err("int_to_string", NULL);
+
+  Str content_length = {.data = content_len_data, .len = num_of_digits};
+
+  const Str headers[] = {conn->http_ver,
+                         SPACE,
+                         status_str,
+                         LINEBREAK,
+                         STR("Server: "),
+                         STR(SERVER),
+                         LINEBREAK,
+                         STR("Date: "),
+                         date_header,
+                         LINEBREAK,
+                         STR("Content-Type: text/html"),
+                         LINEBREAK,
+                         STR("Content-Length: "),
+                         content_length,
+                         LINEBREAK,
+                         STR("Connection: "),
+                         conn->connection,
+                         LINEBREAK,
+                         STR("Location: "),
+                         (Str){.data = config.upstream,
+                               .len = strlen(config.upstream)},
+                         TRAILER},
+            body[] = {error_body_start, status_str, error_body_end, TRAILER};
+
+  for (size_t i = 0; i < sizeof headers / sizeof(Str); i++)
+    if (!write_str(conn, &headers[i]))
+      return err("write_str", strerror(errno));
+
+  for (size_t i = 0; i < sizeof body / sizeof(Str); i++)
+    if (!write_str(conn, &body[i]))
+      return err("write_str", strerror(errno));
+
+  return true;
+}
+
+bool write_str(const Connection *conn, const Str *str) {
+  if (!conn || !str)
+    return set_efault();
+
+  ptrdiff_t current = 0;
+
+  while (str->len && current < str->len) {
+    long wrote = write(conn->client_fd, str->data + current,
+                       (size_t)(str->len - current));
+    if (wrote < 0)
+      return err("write", strerror(errno));
+    current += wrote;
+  }
+
+  return true;
 }
