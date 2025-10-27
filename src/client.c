@@ -11,9 +11,9 @@
 #include <unistd.h>
 
 #include "client.h"
+#include "event.h"
 #include "http.h"
 #include "main.h"
-#include "poll.h"
 #include "utils.h"
 
 bool accept_client(int proxy_fd, int epoll_fd) {
@@ -21,15 +21,14 @@ bool accept_client(int proxy_fd, int epoll_fd) {
   // this fd
   while (RUNNING) {
     Connection *conn = NULL;
-    EventData *data = NULL;
+    Event *event = NULL;
 
     if (!(conn = init_connection()))
       return err("init_connection", NULL);
 
-    if (!(data =
-              init_event_data(TYPE_PTR_CLIENT, (epoll_data_t)(void *)conn))) {
+    if (!(event = init_event(TYPE_PTR_CLIENT, (epoll_data_t)(void *)conn))) {
       free_connection(&conn);
-      return err("init_event_data", NULL);
+      return err("init_event", NULL);
     }
     socklen_t addr_len = sizeof conn->client_addr;
 
@@ -46,19 +45,19 @@ bool accept_client(int proxy_fd, int epoll_fd) {
         // client aborted
         continue;
 
-      free_event_conn(&data);
+      free_event_conn(&event);
       return err("accept", strerror(errno));
     }
 
     if (!set_non_block(conn->client_fd)) {
-      free_event_conn(&data);
+      free_event_conn(&event);
       return err("set_non_block", strerror(errno));
     }
 
-    if (!add_to_epoll(epoll_fd, data,
+    if (!add_to_epoll(epoll_fd, event,
                       EPOLLIN | EPOLLHUP | EPOLLET | EPOLLERR | EPOLLRDHUP |
                           EPOLLONESHOT)) {
-      free_event_conn(&data);
+      free_event_conn(&event);
       return err("add_to_epoll", strerror(errno));
     }
   }
@@ -66,14 +65,14 @@ bool accept_client(int proxy_fd, int epoll_fd) {
   return true;
 }
 
-bool handle_request_client(const EventData *event_data) {
-  if (!event_data)
+bool handle_request_client(const Event *event) {
+  if (!event)
     return set_efault();
 
-  Connection *conn = event_data->data.ptr;
+  Connection *conn = event->data.ptr;
 
-  // event_data SHOULD ALWAYS contain the data as a pointer to a conn
-  assert(event_data->data_type == TYPE_PTR_CLIENT);
+  // event SHOULD ALWAYS contain the data as a pointer to a conn
+  assert(event->data_type == TYPE_PTR_CLIENT);
   assert(conn);
 
   char *buf = conn->client_buffer, *buf_ptr = buf, *end_ptr = NULL;
@@ -129,7 +128,6 @@ bool handle_request_client(const EventData *event_data) {
     return err("read", strerror(errno));
 
   // At this point total_read is the correct len of data in buf
-  // request can only be used in this scope!!
   conn->client_request.data = buf;
   conn->client_request.len = (ptrdiff_t)total_read;
 
@@ -150,11 +148,11 @@ bool handle_request_client(const EventData *event_data) {
   }
 }
 
-bool handle_response_client(const EventData *event_data) {
-  if (!event_data)
+bool handle_response_client(const Event *event) {
+  if (!event)
     return set_efault();
 
-  Connection *conn = event_data->data.ptr;
+  Connection *conn = event->data.ptr;
 
   if (conn->client_status == 200)
     puts("200");

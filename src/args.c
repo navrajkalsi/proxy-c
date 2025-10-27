@@ -41,7 +41,7 @@ Config parse_args(int argc, char *argv[]) {
       args_parsed++;
       break;
     case 'u':
-      if (!validate_url(optarg)) {
+      if (!validate_upstream(optarg)) {
         err("validate_url",
             errno ? strerror(errno) : "Invalid upstream url passed");
         if (config.port)
@@ -72,7 +72,7 @@ Config parse_args(int argc, char *argv[]) {
 
   // if not set with flag, verifying default
   if (!config.upstream) {
-    if (!(validate_url(DEFAULT_UPSTREAM))) {
+    if (!(validate_upstream(DEFAULT_UPSTREAM))) {
       if (config.port)
         free(config.port);
       err("validate_url",
@@ -146,7 +146,7 @@ bool validate_port(char *port) {
   return true;
 }
 
-bool validate_url(char *upstream) {
+bool validate_upstream(char *upstream) {
   if (!upstream)
     return set_efault();
 

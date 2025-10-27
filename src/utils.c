@@ -248,7 +248,7 @@ void handle_sigpipe(int sig) {
 void print_active_num(void) {
   int active = 0;
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
-    if (active_conns[i])
+    if (active_events[i])
       active++;
 
   printf("Num of active connections: %d\n", active);

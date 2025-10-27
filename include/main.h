@@ -33,13 +33,14 @@
 #define STR(str)                                                               \
   (Str) { str, (ptrdiff_t)(sizeof(str) - 1) }
 
-// poll.h specific
+// event.h specific
 #define BUFFER_SIZE 8192
 
 // proxy.h specific
 #define BACKLOG 25
 #define MAX_EVENTS 32
 #define MAX_CONNECTIONS 256
+#define FALLBACK_UPSTREAM_PORT "80" // change this to 443 after SSL
 
 // request.h specific
 #define TRAILER STR("\r\n\r\n")

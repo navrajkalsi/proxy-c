@@ -2,7 +2,7 @@
 
 #include <stdbool.h>
 
-#include "poll.h"
+#include "event.h"
 
 // sets required status codes
 bool validate_request(Connection *conn);

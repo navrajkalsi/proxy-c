@@ -10,7 +10,6 @@
 
 #include "http.h"
 #include "main.h"
-#include "poll.h"
 #include "utils.h"
 
 bool validate_request(Connection *conn) {
@@ -53,7 +52,7 @@ bool validate_request(Connection *conn) {
   // finding the host header
   if (!get_header_value(c.tail.data, "Host", &conn->request_host)) {
     conn->client_status = 400;
-    return err("get_header_value", NULL);
+    return err("get_header_value", "Host header not found");
   }
 
   if (!validate_host(&conn->request_host)) {
@@ -174,6 +173,8 @@ bool set_connection(Connection *conn) {
   if (get_header_value(conn->client_request.data, "Connection",
                        &conn->connection))
     return true;
+  else
+    err("get_header_value", "Connection header not found");
 
   if (equals(conn->http_ver, STR("HTTP/1.0")) ||
       equals(conn->http_ver, STR("HTTP/0.9")))

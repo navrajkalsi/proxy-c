@@ -4,14 +4,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "event.h"
 #include "main.h"
-#include "poll.h"
 #include "proxy.h"
 #include "utils.h"
 
-EventData *init_event_data(DataType data_type, epoll_data_t data) {
-  EventData *result;
-  if (!(result = malloc(sizeof(EventData)))) {
+Event *init_event(DataType data_type, epoll_data_t data) {
+  Event *result;
+  if (!(result = malloc(sizeof(Event)))) {
     err("malloc", strerror(errno));
     return NULL;
   }
@@ -29,12 +29,12 @@ EventData *init_event_data(DataType data_type, epoll_data_t data) {
   return result;
 }
 
-void free_event_data(EventData **event_data) {
-  if (!event_data || !*event_data)
+void free_event(Event **event) {
+  if (!event || !*event)
     return;
 
-  EventData *to_free = *event_data;
-  deactivate_event(*event_data);
+  Event *to_free = *event;
+  deactivate_event(*event);
 
   free(to_free);
   to_free = NULL;
@@ -64,37 +64,37 @@ void free_connection(Connection **conn) {
   *conn = NULL;
 }
 
-void free_event_conn(EventData **event_data) {
-  if (!event_data || !*event_data)
+void free_event_conn(Event **event) {
+  if (!event || !*event)
     return;
 
-  Connection *conn = (*event_data)->data.ptr;
-  if ((*event_data)->data_type != TYPE_FD)
+  Connection *conn = (*event)->data.ptr;
+  if ((*event)->data_type != TYPE_FD)
     free_connection(&conn);
 
-  free_event_data(event_data);
+  free_event(event);
 }
 
-bool activate_event(EventData *event_data) {
-  if (!event_data)
+bool activate_event(Event *event) {
+  if (!event)
     return set_efault();
 
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
-    if (!active_conns[i]) {
-      active_conns[i] = event_data;
-      event_data->self_ptr = active_conns + i;
+    if (!active_events[i]) {
+      active_events[i] = event;
+      event->self_ptr = active_events + i;
       return true;
     }
 
   return false;
 }
 
-void deactivate_event(EventData *event_data) {
-  if (!event_data)
+void deactivate_event(Event *event) {
+  if (!event)
     return;
 
-  *(event_data->self_ptr) = NULL;
-  event_data->self_ptr = NULL;
+  *(event->self_ptr) = NULL;
+  event->self_ptr = NULL;
 }
 
 // after non_block all the system calls on this fd return instantly,
@@ -110,23 +110,23 @@ bool set_non_block(int fd) {
 // adds the entry in the interest list of epoll instance
 // essentially adds fd to epoll_fd list and the event specifies what to
 // wait for & what fd to do that for
-bool add_to_epoll(int epoll_fd, EventData *event_data, int flags) {
+bool add_to_epoll(int epoll_fd, Event *event, int flags) {
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
-  struct epoll_event event = {.events = flags, .data.ptr = (void *)event_data};
+  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)event};
 
   // only proxy_fd(listening sock) is added as fd
-  if (event_data->data_type == TYPE_FD) {
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_data->data.fd, &event) == -1)
+  if (event->data_type == TYPE_FD) {
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event->data.fd, &epoll_event) == -1)
       return err("epoll_ctl", strerror(errno));
-  } else if (event_data->data_type == TYPE_PTR_CLIENT) { // add for client_fd
+  } else if (event->data_type == TYPE_PTR_CLIENT) { // add for client_fd
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
-                  ((Connection *)event_data->data.ptr)->client_fd,
-                  &event) == -1)
+                  ((Connection *)event->data.ptr)->client_fd,
+                  &epoll_event) == -1)
       return err("epoll_ctl", strerror(errno));
-  } else if (event_data->data_type == TYPE_PTR_UPSTREAM) { // add for server_fd
+  } else if (event->data_type == TYPE_PTR_UPSTREAM) { // add for server_fd
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD,
-                  ((Connection *)event_data->data.ptr)->upstream_fd, &event))
+                  ((Connection *)event->data.ptr)->upstream_fd, &epoll_event))
       return err("epoll_ctl", strerror(errno));
   }
   return true;

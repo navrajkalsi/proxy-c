@@ -17,4 +17,4 @@ void print_args(unsigned int args_parsed, const Config *config);
 
 bool validate_port(char *port);
 
-bool validate_url(char *upstream);
+bool validate_upstream(char *upstream);
