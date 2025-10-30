@@ -134,16 +134,28 @@ bool verify_read(Connection *conn) {
     return true; // read more
   } else
     conn->headers_found = true;
-  size_t headers_size = (headers_end + TRAILER_STR.len) - conn->client_buffer;
+
+  headers_end += TRAILER_STR.len; // now past the last \n
+  size_t headers_size = headers_end - conn->client_buffer;
+
+  // tmp null termination for get_header_value(), so I do not get to the next
+  // request or search for the header in the body (if read)
+  char org_char = conn->client_buffer[headers_size];
+  conn->client_buffer[headers_size] = '\0';
 
   Str misc = ERR_STR; // misc str to contain the header value
   if (get_header_value(conn->client_buffer, "Content-Length", &misc)) {
+    conn->client_buffer[headers_size] = org_char;
     Str *content_len_str = &misc;
-    for (int i = 0; i < content_len_str->len; i++)
-      if (!isdigit(content_len_str->data[i])) {
-        conn->client_status = 400;
-        return err("isdigit", "Invalid content-length header value");
-      }
+
+    if (content_len_str->data >
+        headers_end) // this is header belongs to next request in the buf
+
+      for (int i = 0; i < content_len_str->len; i++)
+        if (!isdigit(content_len_str->data[i])) {
+          conn->client_status = 400;
+          return err("isdigit", "Invalid content-length header value");
+        }
 
     // a null terminated str for atoi()
     char *temp = strndup(content_len_str->data, content_len_str->len);
@@ -162,35 +174,58 @@ bool verify_read(Connection *conn) {
 
     if (request_size == conn->read_index) // body read already, but nothing else
       goto read_complete;
-    else if (request_size < conn->read_index) { // body read and another request
-      conn->next_index = request_size + 1;
+
+    if (request_size < conn->read_index) { // body read and another request
+      conn->next_index =
+          request_size + 1; // will be copied to the start for next read
       goto read_complete;
-    } else if (request_size > conn->read_index) {
-      conn->to_read = content_len - (conn->read_index - headers_size);
-      goto disregard_body;
     }
 
+    conn->to_read = content_len - (conn->read_index - headers_size);
+    goto disregard_body;
+
   } else if (get_header_value(conn->client_buffer, "Transfer-Encoding",
-                              &len_or_chunked)) {
-    if (!equals(len_or_chunked, STR("chunked"))) {
+                              &misc)) {
+    conn->client_buffer[headers_size] = org_char;
+    Str *transfer_encoding = &misc;
+
+    if (!equals(*transfer_encoding, STR("chunked"))) {
       conn->client_status = 411;
       return err("verify_encoding", "Encoding method not supported");
     }
 
-    char *last_chunk = strstr(headers_end, "0" TRAILER);
+    char *last_chunk = "0" TRAILER;
 
+    if ((last_chunk = strstr(headers_end, last_chunk))) { // last chunk was read
+      ptrdiff_t chunk_end = (last_chunk + strlen(last_chunk)) -
+                            conn->client_buffer; // this is past the \n
+
+      if (chunk_end == conn->read_index) // read the body and nothing more
+        goto read_complete;
+
+      if (chunk_end < conn->read_index) { // read the body and another request
+        conn->next_index = chunk_end;
+        goto read_complete;
+      }
+
+      return err("verify_last_chunk", "Logic error, last chunk index");
+    }
+
+    // last chunk not read, read more
     conn->chunked = true;
     goto disregard_body;
 
-  } else
+  } else {
+    conn->client_buffer[headers_size] = org_char;
     goto read_complete;
+  }
 
 read_complete:
   conn->to_read = 0;
   return true;
 
 disregard_body:
-  conn->read_index = ++headers_size;
+  conn->read_index = headers_size;
   return true;
 }
 
@@ -219,8 +254,8 @@ bool write_error_response(Connection *conn) {
   if (!set_connection(conn))
     return err("set_connection", NULL);
 
-  Str error_body_start = STR(
-      "<html>\n<head>\n<title>Error</title>\n</head>\n<body>\n<center><h1>");
+  Str error_body_start = STR("<html>\n<head>\n<title>Error</title>\n</"
+                             "head>\n<body>\n<center><h1>");
 
   Str error_body_end =
       STR("</h1></center>\n<hr><center>Proxy-C</center>\n</body>\n</html>");
