@@ -187,16 +187,23 @@ void free_error_list(void) {
 }
 
 bool err(const char *function, const char *error) {
-  // this function is used for immediate error reporting, therefore if any child
-  // functions enqueued to error_list, those errors will not be required any
-  // more
-  free_error_list();
   if (function && error && strcmp(error, strerror(0)))
     fprintf(stderr, "\033[1;31m%s()\033[0m: %s\n", function, error);
   else if (function)
     fprintf(stderr, "\033[1;31m%s()\033[0m\n", function);
   else
     fputs("\033[1;31mUnknown error\033[0m", stderr);
+
+  return false;
+}
+
+bool warn(const char *function, const char *warning) {
+  if (function && warning)
+    fprintf(stderr, "\033[1;33m%s()\033[0m: %s\n", function, warning);
+  else if (function)
+    fprintf(stderr, "\033[1;33m%s()\033[0m\n", function);
+  else
+    fputs("\033[1;33mUnknown warning\033[0m", stderr);
 
   return false;
 }

@@ -72,6 +72,9 @@ void free_error_list(void);
 // for printing non-fatal errors
 bool err(const char *function, const char *error);
 
+// non fatal logging
+bool warn(const char *function, const char *warning);
+
 bool null_ptr(const char *error);
 
 // just like null_ptr() but does not print anything

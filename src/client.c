@@ -1,13 +1,20 @@
 #include <arpa/inet.h>
+#include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <regex.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "client.h"
@@ -17,55 +24,62 @@
 #include "utils.h"
 
 bool accept_client(int proxy_fd, int epoll_fd) {
-  // looping, as there epoll might be waken up by multiple incoming requests on
-  // this fd
+  // looping, as epoll might be waken up by multiple incoming requests
   while (RUNNING) {
     Connection *conn = NULL;
     Event *event = NULL;
 
-    if (!(conn = init_connection()))
-      return err("init_connection", NULL);
+    if (!(conn = init_connection())) {
+      err("init_connection", NULL);
+      break;
+    }
 
     if (!(event = init_event(TYPE_PTR_CLIENT, (epoll_data_t)(void *)conn))) {
       free_connection(&conn);
-      return err("init_event", NULL);
+      err("init_event", NULL);
+      break;
     }
     socklen_t addr_len = sizeof conn->client_addr;
 
     if ((conn->client_fd =
              accept(proxy_fd, (struct sockaddr *)&conn->client_addr,
                     &addr_len)) == -1) {
+
+      free_event_conn(&event);
+
       if (errno == EINTR && !RUNNING) // shutdown
         break;
 
       if (errno == EAGAIN || errno == EWOULDBLOCK) // no more connections / data
         break;
 
-      if (errno == ECONNABORTED)
-        // client aborted
+      if (errno == ECONNABORTED) // client aborted
+      {
+        warn("accept", strerror(errno));
         continue;
-
-      free_event_conn(&event);
-      return err("accept", strerror(errno));
+      }
     }
+
+    // TODO: think what if the client does not make a request forever
 
     if (!set_non_block(conn->client_fd)) {
       free_event_conn(&event);
-      return err("set_non_block", strerror(errno));
+      err("set_non_block", NULL);
+      continue;
     }
 
-    if (!add_to_epoll(epoll_fd, event,
-                      EPOLLIN | EPOLLHUP | EPOLLET | EPOLLERR | EPOLLRDHUP |
-                          EPOLLONESHOT)) {
+    if (!add_to_epoll(epoll_fd, event, READ_FLAGS)) {
       free_event_conn(&event);
-      return err("add_to_epoll", strerror(errno));
+      err("add_to_epoll", NULL);
+      continue;
     }
+    // now the new client will be accepted to make a request
   }
 
   return true;
 }
 
-bool handle_request_client(const Event *event) {
+bool read_client(const Event *event) {
   if (!event)
     return set_efault();
 
@@ -75,77 +89,109 @@ bool handle_request_client(const Event *event) {
   assert(event->data_type == TYPE_PTR_CLIENT);
   assert(conn);
 
-  char *buf = conn->client_buffer, *buf_ptr = buf, *end_ptr = NULL;
-  size_t total_read = 0;
   ssize_t read_status = 0;
 
-  // Only headers are considered, cause I currently support GET only,
-  // anything after TRAILER is disregarded
-  while ((read_status = read(conn->client_fd, buf_ptr,
-                             BUFFER_SIZE - total_read - 1)) > 0) {
-    total_read += (size_t)read_status;
-    buf_ptr = buf + total_read;
-    buf[total_read] = '\0';
-
-    if ((end_ptr = strstr(buf, TRAILER.data)))
-      // No need to read more
-      break;
+  // new request should always start from the beginning of the buffer
+  while ((read_status =
+              read(conn->client_fd, conn->client_buffer + conn->read_index,
+                   BUFFER_SIZE - conn->read_index - 1)) > 0) {
+    conn->read_index += read_status;
   }
 
-  // if there is nothing to read, client closed
-  if (buf == buf_ptr &&
-      !total_read) // I always receive an empty request in the beginning, as
-                   // the browser connects and immediately disconnects
-    return err("verify_request",
-               "empty request"); // this is not a bug, just how TCP works
+  if (read_status == 0) // client disconnect
+    return err("read", "EOF received");
 
-  if (read_status != -1 && end_ptr) { // everything is alright, got the headers
-    // Advancing the ptr by 4 chars to get past the request end
-    // Then comparing with buf_ptr to see if they are same
-    // If same that means there is no body after headers and the total_read
-    // is the correct length, else change total_read to the length of only
-    // the request headers
-    end_ptr += TRAILER.len;
-    *end_ptr = '\0'; // null terminating for strcasestr() use later
-    if (end_ptr != buf_ptr)
-      // Discard if there is any body in the request
-      // Only supporting GET requests for now
-      // so don't need any body
-      total_read = (size_t)(end_ptr - buf);
-  } else if (read_status != -1 && !end_ptr) { // could not find end of headers
-    // first looking if i got the first request line, if not the request is
-    // just not a valid request probably (bad request) looking for a
-    // linebreak
-    // "\r\n" for request line
-    if (strstr(buf, LINEBREAK.data)) {
+  if (read_status == -1) {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
+      NULL;
+    else
+      return err("read", strerror(errno));
+  }
+
+  if (!verify_read(conn))
+    return err("verify_read", NULL);
+
+  return true;
+}
+
+bool verify_read(Connection *conn) {
+  if (!conn)
+    return set_efault();
+
+  // this function will determine if the request is compelete (got the headers
+  // or not), and should not be used after the headers are read
+  assert(!conn->headers_found);
+  assert(conn->client_buffer[conn->read_index] == '\0');
+
+  char *headers_end = NULL;
+  if (!(headers_end = strstr(conn->client_buffer, TRAILER))) {
+    if (conn->read_index >= BUFFER_SIZE) { // no space left
       conn->client_status = 431;
-      return err("verify_request", "Request headers too large");
-    } else {
-      conn->client_status = 400;
-      return err("verify_request", "Bad request");
+      return err("strstr", "Headers too large");
     }
+    return true; // read more
   } else
-    return err("read", strerror(errno));
+    conn->headers_found = true;
+  size_t headers_size = (headers_end + TRAILER_STR.len) - conn->client_buffer;
 
-  // At this point total_read is the correct len of data in buf
-  conn->client_request.data = buf;
-  conn->client_request.len = (ptrdiff_t)total_read;
+  Str misc = ERR_STR; // misc str to contain the header value
+  if (get_header_value(conn->client_buffer, "Content-Length", &misc)) {
+    Str *content_len_str = &misc;
+    for (int i = 0; i < content_len_str->len; i++)
+      if (!isdigit(content_len_str->data[i])) {
+        conn->client_status = 400;
+        return err("isdigit", "Invalid content-length header value");
+      }
 
-  // Handle request sets the required response codes
-  // Only parsing (handle_request) if the request line is present
-  // while (equals(&client->connection, &STR("keep-alive")));
+    // a null terminated str for atoi()
+    char *temp = strndup(content_len_str->data, content_len_str->len);
+    int content_len = atoi(temp);
+    free(temp);
 
-  if (!validate_request(conn))
-    err("validate_request", NULL);
+    if (!content_len) // empty body
+      goto read_complete;
 
-  print_request(conn);
+    if (content_len > 10 * MB) {
+      conn->client_status = 413;
+      return err("verify_content_len", "Content too large");
+    }
 
-  if (conn->client_status == 200)
-    return true;
-  else {
-    write_error_response(conn);
-    return false;
-  }
+    size_t request_size = headers_size + content_len;
+
+    if (request_size == conn->read_index) // body read already, but nothing else
+      goto read_complete;
+    else if (request_size < conn->read_index) { // body read and another request
+      conn->next_index = request_size + 1;
+      goto read_complete;
+    } else if (request_size > conn->read_index) {
+      conn->to_read = content_len - (conn->read_index - headers_size);
+      goto disregard_body;
+    }
+
+  } else if (get_header_value(conn->client_buffer, "Transfer-Encoding",
+                              &len_or_chunked)) {
+    if (!equals(len_or_chunked, STR("chunked"))) {
+      conn->client_status = 411;
+      return err("verify_encoding", "Encoding method not supported");
+    }
+
+    char *last_chunk = strstr(headers_end, "0" TRAILER);
+
+    conn->chunked = true;
+    goto disregard_body;
+
+  } else
+    goto read_complete;
+
+read_complete:
+  conn->to_read = 0;
+  return true;
+
+disregard_body:
+  conn->read_index = ++headers_size;
+  return true;
 }
 
 bool handle_response_client(const Event *event) {
@@ -154,10 +200,8 @@ bool handle_response_client(const Event *event) {
 
   Connection *conn = event->data.ptr;
 
-  if (conn->client_status == 200)
-    puts("200");
-  else
-    write_error_response(conn);
+  if (!write_error_response(conn))
+    return err("write_error_response", NULL);
 
   return true;
 }

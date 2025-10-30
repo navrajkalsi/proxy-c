@@ -228,6 +228,8 @@ char *get_status_string(int status_code) {
     return "404 Not Found";
   case 405:
     return "405 Method Not Allowed";
+  case 413:
+    return "413 Content Too Large";
   case 431:
     return "431 Request Header Fields Too Large";
   case 500:
@@ -254,6 +256,8 @@ Str get_status_str(int status_code) {
     return STR("404 Not Found");
   case 405:
     return STR("405 Method Not Allowed");
+  case 413:
+    return STR("413 Content Too Large");
   case 431:
     return STR("431 Request Header Fields Too Large");
   case 500:

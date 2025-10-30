@@ -35,6 +35,9 @@
 
 // event.h specific
 #define BUFFER_SIZE 8192
+#define MB 1048576
+#define READ_FLAGS                                                             \
+  EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
 
 // proxy.h specific
 #define BACKLOG 25
@@ -43,9 +46,12 @@
 #define FALLBACK_UPSTREAM_PORT "80" // change this to 443 after SSL
 
 // request.h specific
-#define TRAILER STR("\r\n\r\n")
-#define LINEBREAK STR("\r\n")
-#define SPACE STR(" ")
+#define TRAILER "\r\n\r\n"
+#define LINEBREAK "\r\n"
+#define SPACE " "
+#define TRAILER_STR STR(TRAILER)
+#define LINEBREAK_STR STR(LINEBREAK)
+#define SPACE_STR STR(SPACE)
 // only to assign the string literal to str.data if str.data is null
 #define ASSIGN_IF_NULL(str, literal) !str.data ? STR(literal) : str
 

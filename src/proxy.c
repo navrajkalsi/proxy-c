@@ -119,7 +119,8 @@ bool setup_epoll(int proxy_fd, int *epoll_fd) {
   if (!(event = init_event(TYPE_FD, (epoll_data_t)proxy_fd)))
     return err("init_event", NULL);
 
-  if (!add_to_epoll(*epoll_fd, event, EPOLLIN))
+  // EPOLLERR & EPOLLHUP do not need to be added manually
+  if (!add_to_epoll(*epoll_fd, event, EPOLLIN | EPOLLERR | EPOLLHUP))
     return err("add_to_epoll", NULL);
 
   return true;
@@ -248,26 +249,29 @@ bool start_proxy(int epoll_fd) {
     // now checking each event and handling it on basis of event specified
     for (int i = 0; i < ready_events; ++i) {
       struct epoll_event epoll_event = epoll_events[i];
-      Event *event_data = (Event *)epoll_event.data.ptr;
+      Event *event_data = epoll_event.data.ptr;
 
       if (event_data->data_type == TYPE_FD) { // new client
         if (!accept_client(event_data->data.fd, epoll_fd))
           err("accept_client", NULL); // do not return
-        puts("Accepted a new client");
+
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
                  epoll_event.events & EPOLLIN) { // read from client
-        puts("Ready to read from client");
-        if (!handle_request_client(event_data))
-          err("handle_request_client", NULL);
+        if (!read_client(event_data))
+          err("read_client", NULL);
+
       } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                  epoll_event.events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
+
       else if (event_data->data_type == TYPE_PTR_CLIENT &&
                epoll_event.events & EPOLLOUT) // send to client
         puts("Ready to send to client");
+
       else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                epoll_event.events & EPOLLOUT) // send to upstream
         puts("Ready to send to upstream");
+
       else
         err("verify_vaildate_data", "Unknown event data");
     }

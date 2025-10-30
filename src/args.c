@@ -120,7 +120,7 @@ void print_args(unsigned int args_parsed, const Config *config) {
     printf("\nParsed %u Argument(s).", args_parsed);
 
   printf("\nUpstream URL set to: %s\n"
-         "Port set to: %s\n",
+         "Listening Port set to: %s\n",
          config->upstream, config->port);
 
   config->accept_all

@@ -23,12 +23,12 @@ int main(int argc, char *argv[]) {
   int proxy_fd = -1, epoll_fd = -1;
 
   if (!setup_proxy(&config, &proxy_fd)) {
-    err("setup_proxy", strerror(errno));
+    err("setup_proxy", NULL);
     return -1;
   }
 
   if (!setup_epoll(proxy_fd, &epoll_fd)) {
-    err("setup_epoll", strerror(errno));
+    err("setup_epoll", NULL);
     return -1;
   }
 
