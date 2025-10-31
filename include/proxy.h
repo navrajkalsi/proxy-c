@@ -12,10 +12,12 @@
 // automatically
 extern Event *active_events[MAX_CONNECTIONS];
 
+extern int EPOLL_FD;
+
 bool setup_proxy(Config *config, int *proxy_fd);
 
-// sets up epoll() and points out to the fd for new epoll instance
-bool setup_epoll(int proxy_fd, int *epoll_fd);
+// sets up epoll() and sets the global var EPOLL_FD for new epoll instance
+bool setup_epoll(int proxy_fd);
 
 // fills upstream_addrinfo by calling getaddrinfo() on the upstream
 // and selects the port matching the following, in order:
@@ -28,7 +30,7 @@ bool setup_upstream(char *upstream);
 // new socket fd
 bool connect_upstream(int *upstream_fd);
 
-bool start_proxy(int epoll_fd);
+bool start_proxy(void);
 
 void free_upstream_addrinfo(void);
 

@@ -1,6 +1,4 @@
 #include <arpa/inet.h>
-#include <asm-generic/errno-base.h>
-#include <asm-generic/errno.h>
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -23,7 +21,7 @@
 #include "main.h"
 #include "utils.h"
 
-bool accept_client(int proxy_fd, int epoll_fd) {
+bool accept_client(int proxy_fd) {
   // looping, as epoll might be waken up by multiple incoming requests
   while (RUNNING) {
     Connection *conn = NULL;
@@ -68,7 +66,7 @@ bool accept_client(int proxy_fd, int epoll_fd) {
       continue;
     }
 
-    if (!add_to_epoll(epoll_fd, event, READ_FLAGS)) {
+    if (!add_to_epoll(event, READ_FLAGS)) {
       free_event_conn(&event);
       err("add_to_epoll", NULL);
       continue;
@@ -89,13 +87,22 @@ bool read_client(const Event *event) {
   assert(event->data_type == TYPE_PTR_CLIENT);
   assert(conn);
 
+  // in case continuing to read after dealing with previous request
+  if (conn->next_index)
+    if (!pull_buf(conn))
+      return err("pull_buf", strerror(errno));
+
   ssize_t read_status = 0;
 
   // new request should always start from the beginning of the buffer
   while ((read_status =
               read(conn->client_fd, conn->client_buffer + conn->read_index,
-                   BUFFER_SIZE - conn->read_index - 1)) > 0) {
-    conn->read_index += read_status;
+                   conn->to_read)) > 0) {
+
+    if (!conn->headers_found) {
+      conn->read_index += read_status;
+      verify_read(conn);
+    }
   }
 
   if (read_status == 0) // client disconnect
@@ -127,7 +134,7 @@ bool verify_read(Connection *conn) {
 
   char *headers_end = NULL;
   if (!(headers_end = strstr(conn->client_buffer, TRAILER))) {
-    if (conn->read_index >= BUFFER_SIZE) { // no space left
+    if (conn->read_index >= BUFFER_SIZE - 1) { // no space left
       conn->client_status = 431;
       return err("strstr", "Headers too large");
     }
@@ -226,6 +233,26 @@ read_complete:
 
 disregard_body:
   conn->read_index = headers_size;
+  return true;
+}
+
+bool pull_buf(Connection *conn) {
+  if (!conn)
+    return set_efault();
+
+  if (!conn->next_index) // nothing to do, read new request
+    return true;
+
+  assert(conn->read_index > conn->next_index);
+
+  size_t to_copy = conn->read_index - conn->next_index;
+  memcpy(conn->client_buffer, conn->client_buffer + conn->next_index, to_copy);
+  conn->read_index = ++to_copy; // verify this
+  conn->to_read = BUFFER_SIZE - conn->read_index;
+  conn->next_index = 0;
+
+  conn->headers_found = false;
+
   return true;
 }
 

@@ -5,13 +5,17 @@
 #include "event.h"
 
 // calls accept on listening socket fd and adds it to the epoll instance
-bool accept_client(int proxy_fd, int epoll_fd);
+bool accept_client(int proxy_fd);
 
 // called after EPOLLIN is detected on a client socketclient conn
 bool read_client(const Event *event);
 
 // whether to read more and how much to read more
 bool verify_read(Connection *conn);
+
+// copies bytes from next_index to starting of buffer till read_index
+// & sets read index accordingly
+bool pull_buf(Connection *conn);
 
 bool handle_response_client(const Event *event);
 

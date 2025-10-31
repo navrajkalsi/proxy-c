@@ -11,6 +11,7 @@
 
 bool RUNNING = true;
 Config config = {.port = NULL, .accept_all = false, .upstream = NULL};
+int EPOLL_FD = -1;
 
 int main(int argc, char *argv[]) {
   if (!setup_sig_handler()) {
@@ -20,15 +21,20 @@ int main(int argc, char *argv[]) {
 
   config = parse_args(argc, argv);
 
-  int proxy_fd = -1, epoll_fd = -1;
+  int proxy_fd = -1;
 
   if (!setup_proxy(&config, &proxy_fd)) {
     err("setup_proxy", NULL);
     return -1;
   }
 
-  if (!setup_epoll(proxy_fd, &epoll_fd)) {
+  if (!setup_epoll(proxy_fd)) {
     err("setup_epoll", NULL);
+    return -1;
+  }
+
+  if (EPOLL_FD == -1) {
+    err("verify_epoll_fd", "Epoll fd is not valid");
     return -1;
   }
 
@@ -38,7 +44,7 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  if (!start_proxy(epoll_fd)) {
+  if (!start_proxy()) {
     err("start_proxy", strerror(errno));
     return -1;
   }

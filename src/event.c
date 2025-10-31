@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <time.h>
 
 #include "event.h"
 #include "main.h"
@@ -53,11 +52,11 @@ Connection *init_connection(void) {
 
   // client
   conn->client_fd = -1;
-  conn->client_request.data =
+  conn->client_headers.data =
       conn->client_buffer; // initally request points to beginning of the buffer
-  conn->client_request.len = 0;
+  conn->client_headers.len = 0;
   conn->read_index = 0;
-  conn->to_read = BUFFER_SIZE;
+  conn->to_read = BUFFER_SIZE - 1;
   conn->chunked = false;
   conn->headers_found = false;
   conn->next_index = -1;
@@ -65,8 +64,8 @@ Connection *init_connection(void) {
   conn->client_fd = conn->upstream_fd = -1;
   conn->client_status = 0;
   conn->http_ver = STR(FALLBACK_HTTP_VER);
-  conn->client_request = conn->upstream_response = conn->request_host =
-      conn->request_path = conn->connection = ERR_STR;
+  conn->upstream_response = conn->request_host = conn->request_path =
+      conn->connection = ERR_STR;
   return conn;
 }
 
@@ -124,7 +123,7 @@ bool set_non_block(int fd) {
 // adds the entry in the interest list of epoll instance
 // essentially adds fd to epoll_fd list and the event specifies what to
 // wait for & what fd to do that for
-bool add_to_epoll(int epoll_fd, Event *event, int flags) {
+bool add_to_epoll(Event *event, int flags) {
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
   struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)event};
@@ -146,13 +145,13 @@ bool add_to_epoll(int epoll_fd, Event *event, int flags) {
                "Socket is probably being added to epoll before "
                "accepting/connecting, or check event.data_type");
 
-  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_fd, &epoll_event) == -1)
+  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, new_fd, &epoll_event) == -1)
     return err("epoll_ctl", strerror(errno));
 
   return true;
 }
 
-bool mod_in_epoll(int epoll_fd, Event *event, int flags) {
+bool mod_in_epoll(Event *event, int flags) {
 
   struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)event};
   int org_fd = -1;
@@ -168,7 +167,7 @@ bool mod_in_epoll(int epoll_fd, Event *event, int flags) {
   if (org_fd == -1)
     return err("get_target_fd", "Socket fd is not initialized, logic error");
 
-  if (epoll_ctl(epoll_fd, EPOLL_CTL_MOD, org_fd, &epoll_event) == -1)
+  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, org_fd, &epoll_event) == -1)
     return err("epoll_ctl", strerror(errno));
 
   return true;

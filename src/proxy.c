@@ -106,12 +106,9 @@ bool setup_proxy(Config *config, int *proxy_fd) {
   return true;
 }
 
-bool setup_epoll(int proxy_fd, int *epoll_fd) {
-  if (!epoll_fd)
-    return set_efault();
-
-  *epoll_fd = epoll_create(1);
-  if (*epoll_fd == -1)
+bool setup_epoll(int proxy_fd) {
+  EPOLL_FD = epoll_create(1);
+  if (EPOLL_FD == -1)
     return err("epoll_create", strerror(errno));
 
   // adding proxy_fd to epoll as the listening socket
@@ -120,7 +117,7 @@ bool setup_epoll(int proxy_fd, int *epoll_fd) {
     return err("init_event", NULL);
 
   // EPOLLERR & EPOLLHUP do not need to be added manually
-  if (!add_to_epoll(*epoll_fd, event, EPOLLIN | EPOLLERR | EPOLLHUP))
+  if (!add_to_epoll(event, EPOLLIN | EPOLLERR | EPOLLHUP))
     return err("add_to_epoll", NULL);
 
   return true;
@@ -227,14 +224,14 @@ bool connect_upstream(int *upstream_fd) {
   return true;
 }
 
-bool start_proxy(int epoll_fd) {
+bool start_proxy(void) {
   int ready_events = -1;
   struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the
                                                // fds that are ready with their
                                                // respective operation type
 
   while (RUNNING) {
-    if ((ready_events = epoll_wait(epoll_fd, epoll_events, MAX_EVENTS, -1)) ==
+    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, -1)) ==
         -1) {
       if (errno == EINTR && !RUNNING) // ctrl c for example, will not work if
                                       // sighandler is not used first
@@ -252,7 +249,7 @@ bool start_proxy(int epoll_fd) {
       Event *event_data = epoll_event.data.ptr;
 
       if (event_data->data_type == TYPE_FD) { // new client
-        if (!accept_client(event_data->data.fd, epoll_fd))
+        if (!accept_client(event_data->data.fd))
           err("accept_client", NULL); // do not return
 
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&

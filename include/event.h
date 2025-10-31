@@ -30,7 +30,7 @@ typedef struct connection {
   struct sockaddr_storage client_addr; // filled by accept()
 
   int client_fd;
-  Str client_request;   // will contain the length of one full request,
+  Str client_headers;   // will contain the length of one full request headers,
                         // client_buffer may contain more bytes than this
   ptrdiff_t read_index; // where to start reading again
   size_t to_read;       // more bytes to read, incase content-length is provided
@@ -69,7 +69,7 @@ void deactivate_event(Event *event);
 bool set_non_block(int fd);
 
 // calls epoll_ctl with EPOLL_CTL_ADD
-bool add_to_epoll(int epoll_fd, Event *event, int flags);
+bool add_to_epoll(Event *event, int flags);
 
 // epoll_ctl with EPOLL_CTL_MOD
-bool mod_in_epoll(int epoll_fd, Event *event, int flags);
+bool mod_in_epoll(Event *event, int flags);
