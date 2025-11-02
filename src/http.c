@@ -16,7 +16,7 @@ bool validate_request(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  Str request = conn->client_request;
+  Str request = conn->client_headers;
   Cut c = cut(request, ' ');
 
   // verifying method
@@ -170,7 +170,7 @@ bool set_connection(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  if (get_header_value(conn->client_request.data, "Connection",
+  if (get_header_value(conn->client_headers.data, "Connection",
                        &conn->connection))
     return true;
   else
@@ -190,7 +190,7 @@ void print_request(const Connection *conn) {
     return;
 
   // just request line
-  char *request_line = conn->client_request.data;
+  char *request_line = conn->client_headers.data;
   if (!request_line)
     return;
 

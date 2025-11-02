@@ -85,7 +85,7 @@ bool read_client(const Event *event) {
 
   // event SHOULD ALWAYS contain the data as a pointer to a conn
   assert(event->data_type == TYPE_PTR_CLIENT);
-  assert(conn);
+  assert(conn && conn->state == READ_REQUEST);
 
   // in case continuing to read after dealing with previous request
   if (conn->next_index)
@@ -93,16 +93,72 @@ bool read_client(const Event *event) {
       return err("pull_buf", strerror(errno));
 
   ssize_t read_status = 0;
+  uint read_num = 0;
 
   // new request should always start from the beginning of the buffer
-  while ((read_status =
+  while (conn->to_read &&
+         (read_status =
               read(conn->client_fd, conn->client_buffer + conn->read_index,
                    conn->to_read)) > 0) {
 
+    // char scanned;
+    // scanf("%c", &scanned); // for blocking
+    read_num += 1;
+    printf("read: %d : %.*s\n", read_num, (int)(conn->read_index + read_status),
+           conn->client_buffer);
+    // deal with 0 len request for chunked as you rewrite the buffer
+
+    conn->client_buffer[conn->read_index + read_status] = '\0';
+    // if chunked then reject the body
+    // else read upto to_read (which is maybe set by content len if headers were
+    // found)
+    conn->to_read = conn->chunked ? (size_t)(BUFFER_SIZE - conn->read_index - 1)
+                                  : conn->to_read - read_status;
+
     if (!conn->headers_found) {
       conn->read_index += read_status;
-      verify_read(conn);
+      if (!verify_read(
+              conn)) { // error response status set, send error response
+        conn->state = WRITE_RESPONSE;
+        break;
+      }
+
+      // no content len or encoding was specified
+      if (conn->headers_found && !conn->to_read &&
+          !conn->chunked) {          // request complete
+        conn->state = WRITE_REQUEST; // contact upstream
+        break;
+      }
+      continue;
     }
+
+    if (conn->to_read) // request is not completely drained yet, content-length
+                       // was set
+      continue;
+
+    if (conn->chunked) { // checking for last chunk, was not received during
+                         // verify_read()
+      char *headers_end = conn->client_headers.data + conn->client_headers.len,
+           *last_chunk = LAST_CHUNK;
+
+      if ((last_chunk =
+               strstr(headers_end, last_chunk))) { // last chunk was read
+        ptrdiff_t chunk_end = (last_chunk + strlen(LAST_CHUNK)) -
+                              conn->client_buffer; // this is past the \n
+
+        if (chunk_end == conn->read_index) // read the body and nothing more
+          break;
+
+        if (chunk_end < conn->read_index) { // read the body and another request
+          conn->next_index = chunk_end;
+          break;
+        }
+      } else
+        continue;
+    }
+
+    if (!conn->to_read) // done reading body, set from content-len
+      conn->state = WRITE_REQUEST;
   }
 
   if (read_status == 0) // client disconnect
@@ -116,9 +172,6 @@ bool read_client(const Event *event) {
     else
       return err("read", strerror(errno));
   }
-
-  if (!verify_read(conn))
-    return err("verify_read", NULL);
 
   return true;
 }
@@ -145,6 +198,9 @@ bool verify_read(Connection *conn) {
   headers_end += TRAILER_STR.len; // now past the last \n
   size_t headers_size = headers_end - conn->client_buffer;
 
+  conn->client_headers.data = conn->client_buffer;
+  conn->client_headers.len = headers_size;
+
   // tmp null termination for get_header_value(), so I do not get to the next
   // request or search for the header in the body (if read)
   char org_char = conn->client_buffer[headers_size];
@@ -155,14 +211,11 @@ bool verify_read(Connection *conn) {
     conn->client_buffer[headers_size] = org_char;
     Str *content_len_str = &misc;
 
-    if (content_len_str->data >
-        headers_end) // this is header belongs to next request in the buf
-
-      for (int i = 0; i < content_len_str->len; i++)
-        if (!isdigit(content_len_str->data[i])) {
-          conn->client_status = 400;
-          return err("isdigit", "Invalid content-length header value");
-        }
+    for (int i = 0; i < content_len_str->len; i++)
+      if (!isdigit(content_len_str->data[i])) {
+        conn->client_status = 400;
+        return err("isdigit", "Invalid content-length header value");
+      }
 
     // a null terminated str for atoi()
     char *temp = strndup(content_len_str->data, content_len_str->len);
@@ -179,16 +232,18 @@ bool verify_read(Connection *conn) {
 
     size_t request_size = headers_size + content_len;
 
-    if (request_size == conn->read_index) // body read already, but nothing else
+    if (request_size ==
+        (size_t)conn->read_index) // body read already, but nothing else
       goto read_complete;
 
-    if (request_size < conn->read_index) { // body read and another request
+    if (request_size <
+        (size_t)conn->read_index) { // body read and another request
       conn->next_index =
           request_size + 1; // will be copied to the start for next read
       goto read_complete;
     }
 
-    conn->to_read = content_len - (conn->read_index - headers_size);
+    conn->to_read = request_size - conn->read_index;
     goto disregard_body;
 
   } else if (get_header_value(conn->client_buffer, "Transfer-Encoding",
@@ -201,10 +256,10 @@ bool verify_read(Connection *conn) {
       return err("verify_encoding", "Encoding method not supported");
     }
 
-    char *last_chunk = "0" TRAILER;
+    char *last_chunk = LAST_CHUNK;
 
     if ((last_chunk = strstr(headers_end, last_chunk))) { // last chunk was read
-      ptrdiff_t chunk_end = (last_chunk + strlen(last_chunk)) -
+      ptrdiff_t chunk_end = (last_chunk + strlen(LAST_CHUNK)) -
                             conn->client_buffer; // this is past the \n
 
       if (chunk_end == conn->read_index) // read the body and nothing more
@@ -247,8 +302,8 @@ bool pull_buf(Connection *conn) {
 
   size_t to_copy = conn->read_index - conn->next_index;
   memcpy(conn->client_buffer, conn->client_buffer + conn->next_index, to_copy);
-  conn->read_index = ++to_copy; // verify this
-  conn->to_read = BUFFER_SIZE - conn->read_index;
+  conn->read_index = to_copy;
+  conn->to_read = BUFFER_SIZE - conn->read_index - 1;
   conn->next_index = 0;
 
   conn->headers_found = false;
@@ -308,28 +363,29 @@ bool write_error_response(Connection *conn) {
   Str content_length = {.data = content_len_data, .len = num_of_digits};
 
   const Str headers[] = {conn->http_ver,
-                         SPACE,
+                         SPACE_STR,
                          status_str,
-                         LINEBREAK,
+                         LINEBREAK_STR,
                          STR("Server: "),
                          STR(SERVER),
-                         LINEBREAK,
+                         LINEBREAK_STR,
                          STR("Date: "),
                          date_header,
-                         LINEBREAK,
+                         LINEBREAK_STR,
                          STR("Content-Type: text/html"),
-                         LINEBREAK,
+                         LINEBREAK_STR,
                          STR("Content-Length: "),
                          content_length,
-                         LINEBREAK,
+                         LINEBREAK_STR,
                          STR("Connection: "),
                          conn->connection,
-                         LINEBREAK,
+                         LINEBREAK_STR,
                          STR("Location: "),
                          (Str){.data = config.upstream,
                                .len = strlen(config.upstream)},
-                         TRAILER},
-            body[] = {error_body_start, status_str, error_body_end, TRAILER};
+                         TRAILER_STR},
+            body[] = {error_body_start, status_str, error_body_end,
+                      TRAILER_STR};
 
   for (size_t i = 0; i < sizeof headers / sizeof(Str); i++)
     if (!write_str(conn, &headers[i]))

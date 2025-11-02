@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <unistd.h>
 
 #include "event.h"
 #include "main.h"
@@ -50,6 +51,8 @@ Connection *init_connection(void) {
 
   memset(&conn->client_addr, 0, sizeof(struct sockaddr_storage));
 
+  conn->state = READ_REQUEST;
+
   // client
   conn->client_fd = -1;
   conn->client_headers.data =
@@ -59,10 +62,10 @@ Connection *init_connection(void) {
   conn->to_read = BUFFER_SIZE - 1;
   conn->chunked = false;
   conn->headers_found = false;
-  conn->next_index = -1;
+  conn->next_index = 0;
+  conn->client_status = 0;
 
   conn->client_fd = conn->upstream_fd = -1;
-  conn->client_status = 0;
   conn->http_ver = STR(FALLBACK_HTTP_VER);
   conn->upstream_response = conn->request_host = conn->request_path =
       conn->connection = ERR_STR;
@@ -168,6 +171,26 @@ bool mod_in_epoll(Event *event, int flags) {
     return err("get_target_fd", "Socket fd is not initialized, logic error");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, org_fd, &epoll_event) == -1)
+    return err("epoll_ctl", strerror(errno));
+
+  return true;
+}
+
+bool del_from_epoll(Event *event) {
+  int org_fd = -1;
+  Connection *conn = event->data.ptr;
+
+  if (event->data_type == TYPE_PTR_CLIENT)
+    org_fd = conn->client_fd;
+  else if (event->data_type == TYPE_PTR_UPSTREAM)
+    org_fd = conn->upstream_fd;
+  else
+    return err("get_target_fd", "Data type is not valid for modification");
+
+  if (org_fd == -1)
+    return err("get_target_fd", "Socket fd is not initialized, logic error");
+
+  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, org_fd, NULL) == -1)
     return err("epoll_ctl", strerror(errno));
 
   return true;

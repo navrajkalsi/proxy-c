@@ -49,6 +49,7 @@
 #define TRAILER "\r\n\r\n"
 #define LINEBREAK "\r\n"
 #define SPACE " "
+#define LAST_CHUNK "0" TRAILER
 #define TRAILER_STR STR(TRAILER)
 #define LINEBREAK_STR STR(LINEBREAK)
 #define SPACE_STR STR(SPACE)

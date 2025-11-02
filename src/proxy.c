@@ -4,9 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "client.h"
+#include "event.h"
+#include "http.h"
 #include "main.h"
 #include "proxy.h"
 #include "utils.h"
@@ -247,6 +250,8 @@ bool start_proxy(void) {
     for (int i = 0; i < ready_events; ++i) {
       struct epoll_event epoll_event = epoll_events[i];
       Event *event_data = epoll_event.data.ptr;
+      Connection *conn =
+          event_data->data_type != TYPE_FD ? event_data->data.ptr : NULL;
 
       if (event_data->data_type == TYPE_FD) { // new client
         if (!accept_client(event_data->data.fd))
@@ -254,8 +259,17 @@ bool start_proxy(void) {
 
       } else if (event_data->data_type == TYPE_PTR_CLIENT &&
                  epoll_event.events & EPOLLIN) { // read from client
-        if (!read_client(event_data))
+        if (!read_client(event_data)) {
+          del_from_epoll(event_data);
           err("read_client", NULL);
+        }
+
+        if (conn->state == READ_REQUEST) // read more
+          mod_in_epoll(event_data, READ_FLAGS);
+        else if (conn->state == WRITE_RESPONSE) // send error response
+          printf("error: %s\n", get_status_string(conn->client_status));
+        else if (conn->state == WRITE_REQUEST) // contact upstream
+          puts("got headers");
 
       } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
                  epoll_event.events & EPOLLIN) // read from upstream

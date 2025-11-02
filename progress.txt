@@ -1,0 +1,5 @@
+read():
+first find headers, read till trailer
+parse the headers, find content length or chunked encoding
+if contentlen, assign to_read accordingly
+if chunked, read till last chunk

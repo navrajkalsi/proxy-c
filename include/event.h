@@ -11,6 +11,13 @@
 // if connection is storing a fd (only in case of listening sock) or ptr
 typedef enum { TYPE_FD, TYPE_PTR_CLIENT, TYPE_PTR_UPSTREAM } DataType;
 
+typedef enum {
+  READ_REQUEST,
+  WRITE_RESPONSE,
+  READ_RESPONSE,
+  WRITE_REQUEST
+} State;
+
 // struct to be used for adding/modding/deleting to the epoll instance
 // every epoll_event in the epoll instance will have its data as a pointer to
 // this struct
@@ -29,6 +36,8 @@ typedef struct connection {
   char client_buffer[BUFFER_SIZE], upstream_buffer[BUFFER_SIZE];
   struct sockaddr_storage client_addr; // filled by accept()
 
+  State state;
+
   int client_fd;
   Str client_headers;   // will contain the length of one full request headers,
                         // client_buffer may contain more bytes than this
@@ -39,9 +48,10 @@ typedef struct connection {
   bool headers_found;   // if nothing more is needed to be read from the
                         // current request, stop reading if new request is
                         // detected
+  uint client_status;
 
   Str upstream_response, request_host, request_path, http_ver, connection;
-  int upstream_fd, client_status;
+  int upstream_fd;
 } Connection;
 
 // Returns a pointer to Event that needs to be added to the epoll_instance
@@ -73,3 +83,6 @@ bool add_to_epoll(Event *event, int flags);
 
 // epoll_ctl with EPOLL_CTL_MOD
 bool mod_in_epoll(Event *event, int flags);
+
+// epoll_ctl with EPOLL_CTL_DEL
+bool del_from_epoll(Event *event);
