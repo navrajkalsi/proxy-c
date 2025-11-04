@@ -39,7 +39,7 @@ typedef struct connection {
   State state;
 
   int client_fd;
-  Str client_headers;   // will contain the length of one full request headers,
+  Str client_headers;   // will point to the length of one full request headers,
                         // client_buffer may contain more bytes than this
   ptrdiff_t read_index; // where to start reading again
   size_t to_read;       // more bytes to read, incase content-length is provided
@@ -48,6 +48,7 @@ typedef struct connection {
   bool headers_found;   // if nothing more is needed to be read from the
                         // current request, stop reading if new request is
                         // detected
+  char last_chunk[sizeof LAST_CHUNK]; // how much of the last chunk was read
   uint client_status;
 
   Str upstream_response, request_host, request_path, http_ver, connection;

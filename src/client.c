@@ -93,7 +93,7 @@ bool read_client(const Event *event) {
       return err("pull_buf", strerror(errno));
 
   ssize_t read_status = 0;
-  uint read_num = 0;
+  static uint read_num = 0;
 
   // new request should always start from the beginning of the buffer
   while (conn->to_read &&
@@ -132,18 +132,48 @@ bool read_client(const Event *event) {
       continue;
     }
 
-    if (conn->to_read) // request is not completely drained yet, content-length
-                       // was set
-      continue;
-
     if (conn->chunked) { // checking for last chunk, was not received during
                          // verify_read()
       char *headers_end = conn->client_headers.data + conn->client_headers.len,
            *last_chunk = LAST_CHUNK;
+      size_t last_received = strlen(conn->last_chunk), current_received = 0;
 
-      if ((last_chunk =
+      // remember, here read_index will be the index of headers_end (one byte
+      // after last \n)
+      // AND read_index has NOT been advanced by read_status
+
+      if (last_received) { // contains last chunk bytes, from verify_read, or
+                           // previous loop
+        do {
+          if (headers_end[current_received] !=
+              LAST_CHUNK[last_received + current_received]) {
+            // reset last_chunk
+            *conn->last_chunk = '\0';
+            break;
+          }
+
+          conn->last_chunk[last_received + current_received] =
+              headers_end[current_received];
+          conn->last_chunk[last_received + current_received + 1] = '\0';
+        } while (++current_received < (size_t)read_status &&
+                 LAST_CHUNK[last_received + current_received] != '\0');
+      }
+
+      // check for next index
+
+      if (strlen(conn->last_chunk) == (size_t)LAST_CHUNK_STR.len) {
+        conn->state = WRITE_REQUEST;
+        if (current_received !=
+            (size_t)read_status) // next request also available
+          conn->next_index = conn->read_index + current_received;
+
+        break;
+      }
+
+      if (*conn->last_chunk == '\0' &&
+          (last_chunk =
                strstr(headers_end, last_chunk))) { // last chunk was read
-        ptrdiff_t chunk_end = (last_chunk + strlen(LAST_CHUNK)) -
+        ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
                               conn->client_buffer; // this is past the \n
 
         if (chunk_end == conn->read_index) // read the body and nothing more
@@ -259,7 +289,7 @@ bool verify_read(Connection *conn) {
     char *last_chunk = LAST_CHUNK;
 
     if ((last_chunk = strstr(headers_end, last_chunk))) { // last chunk was read
-      ptrdiff_t chunk_end = (last_chunk + strlen(LAST_CHUNK)) -
+      ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
                             conn->client_buffer; // this is past the \n
 
       if (chunk_end == conn->read_index) // read the body and nothing more
@@ -273,10 +303,36 @@ bool verify_read(Connection *conn) {
       return err("verify_last_chunk", "Logic error, last chunk index");
     }
 
-    // last chunk not read, read more
+    // checking if 0 is received, only using last few bytes
+    // extreme case, received: "0\r\n\r"
+    for (ptrdiff_t check_index = conn->read_index - (LAST_CHUNK_STR.len - 1);
+         check_index < conn->read_index; ++check_index) {
+      if (conn->client_buffer[check_index] != '0')
+        continue;
+      *conn->last_chunk = '0';
+
+      // checking if next chars match
+      bool sub_check = true;
+      for (ptrdiff_t sub_index = 1; sub_index + check_index < conn->read_index;
+           ++sub_index) {
+        if (conn->client_buffer[check_index + sub_index] !=
+            LAST_CHUNK[sub_index]) {
+          sub_check = false;
+          break;
+        }
+        conn->last_chunk[sub_index] = LAST_CHUNK[sub_index];
+        conn->last_chunk[sub_index + 1] = '\0';
+      }
+
+      if (sub_check) // all the read chars match the respective last chunk
+                     // chars
+        break;
+
+      *conn->last_chunk = '\0'; // bytes after '0' did not match, continue
+    }
+
     conn->chunked = true;
     goto disregard_body;
-
   } else {
     conn->client_buffer[headers_size] = org_char;
     goto read_complete;

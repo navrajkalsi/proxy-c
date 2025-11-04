@@ -64,6 +64,7 @@ Connection *init_connection(void) {
   conn->headers_found = false;
   conn->next_index = 0;
   conn->client_status = 0;
+  *conn->last_chunk = '\0';
 
   conn->client_fd = conn->upstream_fd = -1;
   conn->http_ver = STR(FALLBACK_HTTP_VER);

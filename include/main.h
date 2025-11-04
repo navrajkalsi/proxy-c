@@ -53,6 +53,7 @@
 #define TRAILER_STR STR(TRAILER)
 #define LINEBREAK_STR STR(LINEBREAK)
 #define SPACE_STR STR(SPACE)
+#define LAST_CHUNK_STR STR(LAST_CHUNK)
 // only to assign the string literal to str.data if str.data is null
 #define ASSIGN_IF_NULL(str, literal) !str.data ? STR(literal) : str
 
