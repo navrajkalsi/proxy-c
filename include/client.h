@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "event.h"
 
@@ -16,6 +17,17 @@ bool verify_read(Connection *conn);
 // copies bytes from next_index to starting of buffer till read_index
 // & sets read index accordingly
 bool pull_buf(Connection *conn);
+
+// searches for full last chunk from index upto null terminator
+// returns true if all of last chunk is found and also sets next_index, if
+// requried
+bool find_last_chunk_full(Connection *conn, ptrdiff_t index);
+
+// searches for remaining chars or starting of last chunk from index upto null
+// terminator
+// returns true if last_chunk is complete, else returns false also sets
+// next_index, if requried
+bool find_last_chunk_partial(Connection *conn, ptrdiff_t index);
 
 bool handle_response_client(const Event *event);
 

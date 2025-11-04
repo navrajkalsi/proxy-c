@@ -48,7 +48,8 @@ typedef struct connection {
   bool headers_found;   // if nothing more is needed to be read from the
                         // current request, stop reading if new request is
                         // detected
-  char last_chunk[sizeof LAST_CHUNK]; // how much of the last chunk was read
+  char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
+                                            // read
   uint client_status;
 
   Str upstream_response, request_host, request_path, http_ver, connection;

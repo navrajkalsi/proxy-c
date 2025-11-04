@@ -134,57 +134,32 @@ bool read_client(const Event *event) {
 
     if (conn->chunked) { // checking for last chunk, was not received during
                          // verify_read()
-      char *headers_end = conn->client_headers.data + conn->client_headers.len,
-           *last_chunk = LAST_CHUNK;
-      size_t last_received = strlen(conn->last_chunk), current_received = 0;
 
       // remember, here read_index will be the index of headers_end (one byte
       // after last \n)
       // AND read_index has NOT been advanced by read_status
 
-      if (last_received) { // contains last chunk bytes, from verify_read, or
-                           // previous loop
-        do {
-          if (headers_end[current_received] !=
-              LAST_CHUNK[last_received + current_received]) {
-            // reset last_chunk
-            *conn->last_chunk = '\0';
-            break;
-          }
+      if (strlen(conn->last_chunk_found)) // continue to search
+        if (find_last_chunk_partial(conn, conn->read_index)) {
+          conn->state = WRITE_REQUEST;
+          break;
+        }
 
-          conn->last_chunk[last_received + current_received] =
-              headers_end[current_received];
-          conn->last_chunk[last_received + current_received + 1] = '\0';
-        } while (++current_received < (size_t)read_status &&
-                 LAST_CHUNK[last_received + current_received] != '\0');
-      }
+      // add a max to compare field
 
-      // check for next index
-
-      if (strlen(conn->last_chunk) == (size_t)LAST_CHUNK_STR.len) {
+      if (find_last_chunk_full(conn, conn->read_index)) {
         conn->state = WRITE_REQUEST;
-        if (current_received !=
-            (size_t)read_status) // next request also available
-          conn->next_index = conn->read_index + current_received;
-
         break;
       }
 
-      if (*conn->last_chunk == '\0' &&
-          (last_chunk =
-               strstr(headers_end, last_chunk))) { // last chunk was read
-        ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
-                              conn->client_buffer; // this is past the \n
-
-        if (chunk_end == conn->read_index) // read the body and nothing more
-          break;
-
-        if (chunk_end < conn->read_index) { // read the body and another request
-          conn->next_index = chunk_end;
-          break;
-        }
-      } else
+      if (strlen(conn->last_chunk_found)) // first one was not completed, was
+                                          // another one found at the end?
         continue;
+
+      if (find_last_chunk_partial(conn, conn->read_index)) {
+        conn->state = WRITE_REQUEST;
+        break;
+      }
     }
 
     if (!conn->to_read) // done reading body, set from content-len
@@ -286,53 +261,16 @@ bool verify_read(Connection *conn) {
       return err("verify_encoding", "Encoding method not supported");
     }
 
-    char *last_chunk = LAST_CHUNK;
-
-    if ((last_chunk = strstr(headers_end, last_chunk))) { // last chunk was read
-      ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
-                            conn->client_buffer; // this is past the \n
-
-      if (chunk_end == conn->read_index) // read the body and nothing more
-        goto read_complete;
-
-      if (chunk_end < conn->read_index) { // read the body and another request
-        conn->next_index = chunk_end;
-        goto read_complete;
-      }
-
-      return err("verify_last_chunk", "Logic error, last chunk index");
-    }
-
-    // checking if 0 is received, only using last few bytes
-    // extreme case, received: "0\r\n\r"
-    for (ptrdiff_t check_index = conn->read_index - (LAST_CHUNK_STR.len - 1);
-         check_index < conn->read_index; ++check_index) {
-      if (conn->client_buffer[check_index] != '0')
-        continue;
-      *conn->last_chunk = '0';
-
-      // checking if next chars match
-      bool sub_check = true;
-      for (ptrdiff_t sub_index = 1; sub_index + check_index < conn->read_index;
-           ++sub_index) {
-        if (conn->client_buffer[check_index + sub_index] !=
-            LAST_CHUNK[sub_index]) {
-          sub_check = false;
-          break;
-        }
-        conn->last_chunk[sub_index] = LAST_CHUNK[sub_index];
-        conn->last_chunk[sub_index + 1] = '\0';
-      }
-
-      if (sub_check) // all the read chars match the respective last chunk
-                     // chars
-        break;
-
-      *conn->last_chunk = '\0'; // bytes after '0' did not match, continue
-    }
+    // finding full last chunk or partial from last few bytes
+    // worst case, got: '0\r\n\r'
+    if (find_last_chunk_full(conn, headers_size) ||
+        find_last_chunk_partial(conn,
+                                conn->read_index - (LAST_CHUNK_STR.len - 1)))
+      goto read_complete;
 
     conn->chunked = true;
     goto disregard_body;
+
   } else {
     conn->client_buffer[headers_size] = org_char;
     goto read_complete;
@@ -365,6 +303,62 @@ bool pull_buf(Connection *conn) {
   conn->headers_found = false;
 
   return true;
+}
+
+bool find_last_chunk_full(Connection *conn, ptrdiff_t index) {
+  if (!conn)
+    return set_efault();
+
+  char *last_chunk = LAST_CHUNK;
+
+  if ((last_chunk = strstr(conn->client_buffer + index,
+                           last_chunk))) { // last chunk was read
+    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
+                          conn->client_buffer; // this is past the \n
+
+    if (conn->client_buffer[chunk_end] !=
+        '\0') // read the body and another request
+      conn->next_index = chunk_end;
+
+    // read the body and nothing more
+    return true;
+  }
+
+  return false;
+}
+
+bool find_last_chunk_partial(Connection *conn, ptrdiff_t index) {
+  if (!conn)
+    return set_efault();
+
+  // checking if 0 is received, only using last few bytes
+  // extreme case, received: "0\r\n\r"
+  while (conn->client_buffer[index] != '\0') {
+    size_t found =
+        strlen(conn->last_chunk_found); // chars already found for last chunk,
+                                        // will be zero in case starting new
+                                        // can change in this loop
+
+    printf("found: %zu\n", found);
+    if (found == (size_t)LAST_CHUNK_STR.len)
+      break;
+
+    if (conn->client_buffer[index] != LAST_CHUNK[found])
+      *conn->last_chunk_found = '\0'; // restart
+    else {
+      conn->last_chunk_found[found] = LAST_CHUNK[found];
+      conn->last_chunk_found[++found] = '\0';
+    }
+
+    index++;
+  }
+
+  if (strlen(conn->last_chunk_found) == (size_t)LAST_CHUNK_STR.len) {
+    if (conn->client_buffer[index] != '\0')
+      conn->next_index = index;
+    return true;
+  } else
+    return false;
 }
 
 bool handle_response_client(const Event *event) {
