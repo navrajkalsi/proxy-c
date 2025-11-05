@@ -18,6 +18,10 @@ bool verify_read(Connection *conn);
 // & sets read index accordingly
 bool pull_buf(Connection *conn);
 
+// dynamically checks for last_chunk (fragmented and/or full) depending on the
+// chars in conn.last_chunk_found
+bool find_last_chunk(Connection *conn, ptrdiff_t index);
+
 // searches for full last chunk from index upto null terminator
 // returns true if all of last chunk is found and also sets next_index, if
 // requried
