@@ -93,7 +93,6 @@ bool read_client(const Event *event) {
       return err("pull_buf", strerror(errno));
 
   ssize_t read_status = 0;
-  static uint read_num = 0;
 
   // new request should always start from the beginning of the buffer
   while (conn->to_read &&
@@ -288,19 +287,22 @@ bool find_last_chunk(Connection *conn, ptrdiff_t index) {
   if (!conn)
     return set_efault();
 
-  // pointer at chars after headers
-  char *start = conn->client_buffer + index;
+  assert(conn->headers_found);
 
-  if (*start == '\0')
+  // pointer at chars after headers
+  char *start = conn->client_buffer + conn->client_headers.len;
+
+  if (*start == '\0') // no body
     return false;
 
   // first checking if already reading last chunk from previous call
   size_t matched = strlen(conn->last_chunk_found);
 
   while (matched && matched < (size_t)LAST_CHUNK_STR.len &&
-         *start != '\0') {               // continue to check for last_chunk
+         *start) {                       // continue to check for last_chunk
     if (*start != LAST_CHUNK[matched]) { // mismatch
       *conn->last_chunk_found = '\0';
+      matched = 0;
       break;
     }
 
@@ -310,15 +312,16 @@ bool find_last_chunk(Connection *conn, ptrdiff_t index) {
     start++;
   }
 
-  // nothing more to compare
-  if (*start == '\0')
+  if (matched == LAST_CHUNK_STR.len) { // full chunk matched
+    if (*start)                        // next request
+      conn->next_index = start - conn->client_buffer;
     return true;
+  } else if (matched) // full chunk not matched but ran out of chars
+    return false;     // read more
 
-  // full chunk found && next request
-  if (strlen(conn->last_chunk_found) == (size_t)LAST_CHUNK_STR.len) {
-    conn->next_index = start - conn->client_buffer;
-    return true;
-  }
+  // nothing more to compare
+  if (!*start)
+    return false;
 
   // last chunk not found in the beginning
   char *last_chunk = LAST_CHUNK;
@@ -326,8 +329,7 @@ bool find_last_chunk(Connection *conn, ptrdiff_t index) {
     ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
                           conn->client_buffer; // this is past the \n
 
-    if (conn->client_buffer[chunk_end] !=
-        '\0') // read the body and another request
+    if (conn->client_buffer[chunk_end]) // read the body and another request
       conn->next_index = chunk_end;
 
     // read the body and nothing more
@@ -336,25 +338,25 @@ bool find_last_chunk(Connection *conn, ptrdiff_t index) {
 
   // full last chunk not found, check last bytes in the buffer for worst case:
   // '0\r\n\r'
-  start = conn->client_buffer + index;
+  start = conn->client_buffer + conn->client_headers.len;
   size_t read_size = strlen(start), // num of chars available to check at most
-      to_check = read_size < (size_t)LAST_CHUNK_STR.len - 1
+      to_match = read_size < (size_t)LAST_CHUNK_STR.len - 1
                      ? read_size
                      : (size_t)LAST_CHUNK_STR.len - 1;
-  ptrdiff_t check_index = read_size - to_check, found_index = 0;
+  ptrdiff_t match_index = read_size - to_match;
+  matched = 0;
 
-  // checking if 0 is received, only using last to_check bytes
-  while (start[check_index] != '\0') {
-
-    if (start[check_index] != LAST_CHUNK[found_index]) {
-      found_index = 0;
+  // checking if 0 is received, only using last to_match bytes
+  while (start[match_index]) {
+    if (start[match_index] != LAST_CHUNK[matched]) {
+      matched = 0;
       *conn->last_chunk_found = '\0'; // restart
     } else {
-      conn->last_chunk_found[found_index] = LAST_CHUNK[found_index];
-      conn->last_chunk_found[++found_index] = '\0';
+      conn->last_chunk_found[matched] = LAST_CHUNK[matched];
+      conn->last_chunk_found[++matched] = '\0';
     }
 
-    check_index++;
+    match_index++;
   }
 
   return false;

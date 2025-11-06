@@ -248,17 +248,17 @@ bool start_proxy(void) {
     // all sockets should be set to not block
     // now checking each event and handling it on basis of event specified
     for (int i = 0; i < ready_events; ++i) {
-      struct epoll_event epoll_event = epoll_events[i];
-      Event *event_data = epoll_event.data.ptr;
-      Connection *conn =
-          event_data->data_type != TYPE_FD ? event_data->data.ptr : NULL;
+      uint32_t events = epoll_events[i].events;
+      Event *event_data = epoll_events[i].data.ptr;
+      DataType type = event_data->data_type;
+      Connection *conn = type != TYPE_FD ? event_data->data.ptr : NULL;
 
-      if (event_data->data_type == TYPE_FD) { // new client
+      if (type == TYPE_FD) { // new client
         if (!accept_client(event_data->data.fd))
           err("accept_client", NULL); // do not return
 
-      } else if (event_data->data_type == TYPE_PTR_CLIENT &&
-                 epoll_event.events & EPOLLIN) { // read from client
+      } else if (type == TYPE_PTR_CLIENT &&
+                 events & EPOLLIN) { // read from client
         if (!read_client(event_data)) {
           del_from_epoll(event_data);
           err("read_client", NULL);
@@ -266,22 +266,31 @@ bool start_proxy(void) {
 
         if (conn->state == READ_REQUEST) // read more
           mod_in_epoll(event_data, READ_FLAGS);
-        else if (conn->state == WRITE_RESPONSE) // send error response
+        else if (conn->state == WRITE_RESPONSE) { // send error response
           printf("error: %s\n", get_status_string(conn->client_status));
-        else if (conn->state == WRITE_REQUEST) // contact upstream
+          mod_in_epoll(event_data, WRITE_FLAGS);
+        } else if (conn->state == WRITE_REQUEST) { // contact upstream
           puts("got headers");
+          mod_in_epoll(event_data, WRITE_FLAGS);
+        }
 
-      } else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
-                 epoll_event.events & EPOLLIN) // read from upstream
+      } else if (type == TYPE_PTR_UPSTREAM &&
+                 events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
 
-      else if (event_data->data_type == TYPE_PTR_CLIENT &&
-               epoll_event.events & EPOLLOUT) // send to client
+      else if (type == TYPE_PTR_CLIENT && events & EPOLLOUT) // send to client
         puts("Ready to send to client");
 
-      else if (event_data->data_type == TYPE_PTR_UPSTREAM &&
-               epoll_event.events & EPOLLOUT) // send to upstream
+      else if (type == TYPE_PTR_UPSTREAM &&
+               events & EPOLLOUT) // send to upstream
         puts("Ready to send to upstream");
+
+      else if (events & EPOLLHUP)
+        puts("hang up");
+      else if (events & EPOLLRDHUP)
+        puts("read hang up");
+      else if (events & EPOLLERR)
+        puts("error");
 
       else
         err("verify_vaildate_data", "Unknown event data");

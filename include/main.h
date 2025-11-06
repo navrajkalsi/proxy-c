@@ -38,6 +38,9 @@
 #define MB 1048576
 #define READ_FLAGS                                                             \
   EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
+#define WRITE_FLAGS                                                            \
+  EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
+#define ERROR_FLAGS EPOLLHUP | EPOLLRDHUP | EPOLLERR
 
 // proxy.h specific
 #define BACKLOG 25
