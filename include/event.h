@@ -42,7 +42,9 @@ typedef struct connection {
   Str client_headers;   // will point to the length of one full request headers,
                         // client_buffer may contain more bytes than this
   ptrdiff_t read_index; // where to start reading again
+  ptrdiff_t write_index; // where to start writing from
   size_t to_read;       // more bytes to read, incase content-length is provided
+  size_t to_write;      // bytes remaining to write, across writes
   bool chunked;         // transfer encoding
   ptrdiff_t next_index; // incase 2 requests arrive back to back
   bool headers_found;   // if nothing more is needed to be read from the

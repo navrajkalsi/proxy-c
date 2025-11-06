@@ -266,11 +266,11 @@ bool start_proxy(void) {
 
         if (conn->state == READ_REQUEST) // read more
           mod_in_epoll(event_data, READ_FLAGS);
-        else if (conn->state == WRITE_RESPONSE) { // send error response
-          printf("error: %s\n", get_status_string(conn->client_status));
+        else if (conn->state == WRITE_RESPONSE) // send error response
           mod_in_epoll(event_data, WRITE_FLAGS);
-        } else if (conn->state == WRITE_REQUEST) { // contact upstream
+        else if (conn->state == WRITE_REQUEST) { // contact upstream
           puts("got headers");
+          conn->client_status = 301;
           mod_in_epoll(event_data, WRITE_FLAGS);
         }
 
@@ -278,8 +278,16 @@ bool start_proxy(void) {
                  events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
 
-      else if (type == TYPE_PTR_CLIENT && events & EPOLLOUT) // send to client
-        puts("Ready to send to client");
+      else if (type == TYPE_PTR_CLIENT && events & EPOLLOUT) { // send to client
+        if (conn->client_status) { // error during read, did not contact
+                                   // upstream
+          if (!handle_error_response(conn))
+            err("handle_error_response", NULL);
+          // timeout
+          continue;
+        } else
+          puts("Ready to send to client");
+      }
 
       else if (type == TYPE_PTR_UPSTREAM &&
                events & EPOLLOUT) // send to upstream

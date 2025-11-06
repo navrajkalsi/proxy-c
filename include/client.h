@@ -22,7 +22,7 @@ bool pull_buf(Connection *conn);
 // chars in conn.last_chunk_found
 // starts to check from end of headers in client_buffer
 // returns true if chunk is received in full, or false if need to read more
-bool find_last_chunk(Connection *conn, ptrdiff_t index);
+bool find_last_chunk(Connection *conn);
 
 // searches for full last chunk from index upto null terminator
 // returns true if all of last chunk is found and also sets next_index, if
@@ -35,9 +35,15 @@ bool find_last_chunk_full(Connection *conn, ptrdiff_t index);
 // next_index, if requried
 bool find_last_chunk_partial(Connection *conn, ptrdiff_t index);
 
-bool handle_response_client(const Event *event);
+// sending the error status code to client, in case of error during read()
+bool handle_error_response(Connection *conn);
+
+bool generate_error_response(Connection *conn);
 
 // to send an error directly without contacting upstream
 bool write_error_response(Connection *conn);
+
+// to send an error directly without contacting upstream
+bool write_error_response1(Connection *conn);
 
 bool write_str(const Connection *conn, const Str *write);

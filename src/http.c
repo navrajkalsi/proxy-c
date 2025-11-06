@@ -151,7 +151,7 @@ bool get_header_value(const char *headers, const char *header_name,
   return true;
 }
 
-bool set_date(Str *date) {
+bool set_date_str(Str *date) {
   if (!date || !date->data)
     return set_efault();
 
@@ -164,6 +164,19 @@ bool set_date(Str *date) {
   // strftime returns 0 if write buffer is small
   return (bool)strftime(date->data, (size_t)DATE_LEN,
                         "%a, %d %b %Y %H:%M:%S GMT", &tm);
+}
+
+bool set_date_string(char *date) {
+  if (!date)
+    return set_efault();
+
+  time_t now = time(NULL);
+  struct tm tm;
+  gmtime_r(&now, &tm);
+
+  // strftime returns 0 if write buffer is small
+  return (bool)strftime(date, (size_t)DATE_LEN, "%a, %d %b %Y %H:%M:%S GMT",
+                        &tm);
 }
 
 bool set_connection(Connection *conn) {

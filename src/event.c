@@ -59,6 +59,7 @@ Connection *init_connection(void) {
       conn->client_buffer; // initally request points to beginning of the buffer
   conn->client_headers.len = 0;
   conn->read_index = 0;
+  conn->write_index = 0;
   conn->to_read = BUFFER_SIZE - 1;
   conn->chunked = false;
   conn->headers_found = false;

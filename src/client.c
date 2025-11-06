@@ -1,4 +1,6 @@
 #include <arpa/inet.h>
+#include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -133,7 +135,7 @@ bool read_client(const Event *event) {
       // after last \n)
       // AND read_index has NOT been advanced by read_status
 
-      if (find_last_chunk(conn, conn->read_index)) {
+      if (find_last_chunk(conn)) {
         conn->state = WRITE_REQUEST;
         break;
       }
@@ -142,9 +144,6 @@ bool read_client(const Event *event) {
     if (!conn->to_read) // done reading body, set from content-len
       conn->state = WRITE_REQUEST;
   }
-
-  if (conn->next_index)
-    printf("next: \n%s\n", conn->client_buffer + conn->next_index);
 
   if (read_status == 0) // client disconnect
     return err("read", "EOF received");
@@ -243,7 +242,7 @@ bool verify_read(Connection *conn) {
 
     // finding full last chunk or partial from last few bytes
     // worst case, got: '0\r\n\r'
-    if (find_last_chunk(conn, headers_size))
+    if (find_last_chunk(conn))
       goto read_complete;
 
     conn->chunked = true;
@@ -283,7 +282,7 @@ bool pull_buf(Connection *conn) {
   return true;
 }
 
-bool find_last_chunk(Connection *conn, ptrdiff_t index) {
+bool find_last_chunk(Connection *conn) {
   if (!conn)
     return set_efault();
 
@@ -312,8 +311,8 @@ bool find_last_chunk(Connection *conn, ptrdiff_t index) {
     start++;
   }
 
-  if (matched == LAST_CHUNK_STR.len) { // full chunk matched
-    if (*start)                        // next request
+  if (matched == (size_t)LAST_CHUNK_STR.len) { // full chunk matched
+    if (*start)                                // next request
       conn->next_index = start - conn->client_buffer;
     return true;
   } else if (matched) // full chunk not matched but ran out of chars
@@ -418,14 +417,100 @@ bool find_last_chunk_partial(Connection *conn, ptrdiff_t index) {
     return false;
 }
 
-bool handle_response_client(const Event *event) {
-  if (!event)
+bool handle_error_response(Connection *conn) {
+  if (!conn)
     return set_efault();
 
-  Connection *conn = event->data.ptr;
+  assert(conn->client_status && conn->client_status >= 300);
+
+  // using upstream buffer as client buffer may contain another request, but
+  // upstream buffer will be empty
+  if (!generate_error_response(conn))
+    return err("generate_error_response", NULL);
 
   if (!write_error_response(conn))
     return err("write_error_response", NULL);
+
+  return true;
+}
+
+bool generate_error_response(Connection *conn) {
+  if (!conn)
+    return set_efault();
+
+  assert(conn->client_status >= 300);
+
+  char date[DATE_LEN] = {0};
+  if (!set_date_string(date))
+    return err("set_date_string", NULL);
+
+  const Str err_str = get_status_str(conn->client_status),
+            date_str = {.data = date, .len = DATE_LEN - 1},
+            response_body[] = {
+                STR("<html><head><title>"), err_str,
+                STR("</title</head><body><center><h1>"), err_str,
+                STR("</h1></center><hr>center>" SERVER "</center></body>")};
+
+  size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
+
+  for (uint i = 0; i < body_elms; ++i)
+    body_size += response_body[i].len;
+
+  // calculating number of bytes required to hold the final length
+  // mostly will be 3, still checking
+  int divisor = 1, num_of_digits = 0;
+  while (body_size / divisor > 0 && ++num_of_digits)
+    divisor *= 10;
+
+  char content_len_data[num_of_digits];
+  memset(content_len_data, 0, num_of_digits);
+
+  int_to_string(body_size, content_len_data);
+  if (!*content_len_data)
+    return err("int_to_string", NULL);
+
+  const Str content_length = {.data = content_len_data, .len = num_of_digits},
+            location = {.data = config.upstream,
+                        .len = (ptrdiff_t)strlen(config.upstream)},
+            response_headers[] = {
+                STR("HTTP/1.1 "),
+                err_str,
+                STR("\r\nServer: " SERVER "\r\nDate: "),
+                date_str,
+                STR("\r\nContent-Type: text/html\r\nContent-Length: "),
+                content_length,
+                STR("\r\nConnection: "),
+                conn->client_status >= 400
+                    ? STR("keep-alive")
+                    : STR("close"), // close for redirections
+                conn->client_status < 400
+                    ? STR("\r\nLocation: ")
+                    : ERR_STR, // location only for redirections
+                conn->client_status < 400 ? location : ERR_STR,
+                STR("\r\n\r\n")};
+
+  // collecting all response in upstream_buffer
+  size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
+  for (uint i = 0; i < header_elms; ++i)
+    headers_size += response_headers[i].len;
+
+  if (headers_size + body_size > BUFFER_SIZE)
+    return err("collect_response", "Error response too big");
+
+  ptrdiff_t buf_ptr = 0;
+
+  for (uint i = 0; i < header_elms; ++i) {
+    memcpy(conn->upstream_buffer + buf_ptr, response_headers[i].data,
+           response_headers[i].len);
+    buf_ptr += response_headers[i].len;
+  }
+  for (uint i = 0; i < body_elms; ++i) {
+    memcpy(conn->upstream_buffer + buf_ptr, response_body[i].data,
+           response_body[i].len);
+    buf_ptr += response_body[i].len;
+  }
+  conn->upstream_buffer[buf_ptr] = '\0';
+  conn->to_write = (size_t)buf_ptr;
 
   return true;
 }
@@ -434,10 +519,37 @@ bool write_error_response(Connection *conn) {
   if (!conn)
     return set_efault();
 
+  ssize_t write_status = 0;
+
+  while ((conn->to_write -= write_status) &&
+         (write_status =
+              write(conn->client_fd, conn->upstream_buffer + conn->write_index,
+                    conn->to_write)) > 0)
+    conn->write_index += write_status;
+
+  if (!write_status)
+    return err("write", "No write status");
+
+  if (write_status == -1) {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
+      NULL;
+    else
+      return err("write", strerror(errno));
+  }
+
+  return true;
+}
+
+bool write_error_response1(Connection *conn) {
+  if (!conn)
+    return set_efault();
+
   char date_data[DATE_LEN];
   Str date_header = {.data = date_data, .len = DATE_LEN};
 
-  if (!set_date(&date_header))
+  if (!set_date_str(&date_header))
     return err("set_date", NULL);
 
   if (!set_connection(conn))

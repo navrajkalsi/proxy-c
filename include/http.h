@@ -21,7 +21,11 @@ bool get_header_value(const char *headers, const char *header_name,
 
 // date.data should point to a memory of DATE_LEN bytes
 // this function does not malloc!
-bool set_date(Str *date);
+bool set_date_str(Str *date);
+
+// date should point to a memory of DATE_LEN bytes
+// this function does not malloc!
+bool set_date_string(char *date);
 
 // finds connection header and respects its value
 bool set_connection(Connection *conn);
