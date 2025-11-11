@@ -1,6 +1,4 @@
 #include <arpa/inet.h>
-#include <asm-generic/errno-base.h>
-#include <asm-generic/errno.h>
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -115,14 +113,14 @@ bool read_client(const Event *event) {
       conn->read_index += read_status;
       if (!verify_read(
               conn)) { // error response status set, send error response
-        conn->state = WRITE_RESPONSE;
+        conn->state = WRITE_ERROR;
         break;
       }
 
       // no content len or encoding was specified
       if (conn->headers_found && !conn->to_read &&
-          !conn->chunked) {          // request complete
-        conn->state = WRITE_REQUEST; // contact upstream
+          !conn->chunked) { // request complete, now verify it
+        conn->state = VERIFY_REQUEST;
         break;
       }
       continue;
@@ -136,13 +134,13 @@ bool read_client(const Event *event) {
       // AND read_index has NOT been advanced by read_status
 
       if (find_last_chunk(conn)) {
-        conn->state = WRITE_REQUEST;
+        conn->state = VERIFY_REQUEST;
         break;
       }
     }
 
     if (!conn->to_read) // done reading body, set from content-len
-      conn->state = WRITE_REQUEST;
+      conn->state = VERIFY_REQUEST;
   }
 
   if (read_status == 0) // client disconnect
@@ -415,6 +413,11 @@ bool find_last_chunk_partial(Connection *conn, ptrdiff_t index) {
     return true;
   } else
     return false;
+}
+
+bool verify_request(Connection *conn) {
+  if (!conn)
+    return set_efault();
 }
 
 bool handle_error_response(Connection *conn) {

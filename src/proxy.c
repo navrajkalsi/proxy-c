@@ -9,7 +9,6 @@
 
 #include "client.h"
 #include "event.h"
-#include "http.h"
 #include "main.h"
 #include "proxy.h"
 #include "utils.h"
@@ -258,29 +257,23 @@ bool start_proxy(void) {
           err("accept_client", NULL); // do not return
 
       } else if (type == TYPE_PTR_CLIENT &&
-                 events & EPOLLIN) { // read from client
-        if (!read_client(event_data)) {
+                 events & EPOLLIN) {    // read from client
+        if (!read_client(event_data)) { // done with the client
           del_from_epoll(event_data);
           err("read_client", NULL);
+          continue;
         }
 
-        if (conn->state == READ_REQUEST) // read more
-          mod_in_epoll(event_data, READ_FLAGS);
-        else if (conn->state == WRITE_RESPONSE) // send error response
-          mod_in_epoll(event_data, WRITE_FLAGS);
-        else if (conn->state == WRITE_REQUEST) { // contact upstream
-          puts("got headers");
-          conn->client_status = 301;
-          mod_in_epoll(event_data, WRITE_FLAGS);
-        }
+        handle_state(event_data);
 
       } else if (type == TYPE_PTR_UPSTREAM &&
                  events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
 
       else if (type == TYPE_PTR_CLIENT && events & EPOLLOUT) { // send to client
-        if (conn->client_status) { // error during read, did not contact
-                                   // upstream
+        if (conn->client_status &&
+            conn->client_status != 200) { // error during read, did not contact
+                                          // upstream
           if (!handle_error_response(conn))
             err("handle_error_response", NULL);
           // timeout
@@ -310,6 +303,23 @@ bool start_proxy(void) {
   free_active_conns();
 
   return true;
+}
+
+void handle_state(Event *event_data) {
+  Connection *conn = event_data->data.ptr;
+
+  if (conn->state == VERIFY_REQUEST) // verify_request may change the state
+    verify_request(conn);
+
+  if (conn->state == READ_REQUEST) // read more
+    mod_in_epoll(event_data, READ_FLAGS);
+  else if (conn->state ==
+           WRITE_ERROR) // error from reading request or verifying request
+    mod_in_epoll(event_data, WRITE_FLAGS);
+  else if (conn->state == WRITE_RESPONSE) // send error response
+    mod_in_epoll(event_data, WRITE_FLAGS);
+  else if (conn->state == WRITE_REQUEST) // contact upstream
+    mod_in_epoll(event_data, WRITE_FLAGS);
 }
 
 void free_upstream_addrinfo(void) {

@@ -35,6 +35,10 @@ bool find_last_chunk_full(Connection *conn, ptrdiff_t index);
 // next_index, if requried
 bool find_last_chunk_partial(Connection *conn, ptrdiff_t index);
 
+// Proxy side request verification
+// host header verification
+bool verify_request(Connection *conn);
+
 // sending the error status code to client, in case of error during read()
 bool handle_error_response(Connection *conn);
 
