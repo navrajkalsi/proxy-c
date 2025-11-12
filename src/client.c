@@ -21,7 +21,7 @@
 #include "main.h"
 #include "utils.h"
 
-bool accept_client(int proxy_fd) {
+void accept_client(int proxy_fd) {
   // looping, as epoll might be waken up by multiple incoming requests
   while (RUNNING) {
     Connection *conn = NULL;
@@ -74,12 +74,12 @@ bool accept_client(int proxy_fd) {
     // now the new client will be accepted to make a request
   }
 
-  return true;
+  return;
 }
 
-bool read_client(const Event *event) {
+void read_client(const Event *event) {
   if (!event)
-    return set_efault();
+    goto error;
 
   Connection *conn = event->data.ptr;
 
@@ -89,8 +89,10 @@ bool read_client(const Event *event) {
 
   // in case continuing to read after dealing with previous request
   if (conn->next_index)
-    if (!pull_buf(conn))
-      return err("pull_buf", strerror(errno));
+    if (!pull_buf(conn)) {
+      err("pull_buf", strerror(errno));
+      goto error;
+    }
 
   ssize_t read_status = 0;
 
@@ -143,19 +145,29 @@ bool read_client(const Event *event) {
       conn->state = VERIFY_REQUEST;
   }
 
-  if (read_status == 0) // client disconnect
-    return err("read", "EOF received");
+  if (read_status == 0) { // client disconnect
+    conn->state = CLOSE_CONN;
+    err("read", "EOF received");
+    return;
+  }
 
   if (read_status == -1) {
     if (errno == EINTR && !RUNNING) // shutdown
       NULL;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
       NULL;
-    else
-      return err("read", strerror(errno));
+    else {
+      err("read", strerror(errno));
+      goto error;
+    }
   }
 
-  return true;
+  return;
+
+error:
+  conn->state = WRITE_ERROR;
+  conn->client_status = 500;
+  return;
 }
 
 bool verify_read(Connection *conn) {

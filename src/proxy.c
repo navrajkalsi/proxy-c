@@ -252,22 +252,16 @@ bool start_proxy(void) {
       DataType type = event_data->data_type;
       Connection *conn = type != TYPE_FD ? event_data->data.ptr : NULL;
 
-      if (type == TYPE_FD) { // new client
-        if (!accept_client(event_data->data.fd))
-          err("accept_client", NULL); // do not return
+      if (type == TYPE_FD) // new client
+        accept_client(event_data->data.fd);
 
-      } else if (type == TYPE_PTR_CLIENT &&
-                 events & EPOLLIN) {    // read from client
-        if (!read_client(event_data)) { // done with the client
-          del_from_epoll(event_data);
-          err("read_client", NULL);
-          continue;
-        }
+      else if (type == TYPE_PTR_CLIENT && events & EPOLLIN) // read from client
+        read_client(event_data);
 
-        handle_state(event_data);
+      // handle upstream and client in handle_state
 
-      } else if (type == TYPE_PTR_UPSTREAM &&
-                 events & EPOLLIN) // read from upstream
+      else if (type == TYPE_PTR_UPSTREAM &&
+               events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
 
       else if (type == TYPE_PTR_CLIENT && events & EPOLLOUT) { // send to client
@@ -295,6 +289,8 @@ bool start_proxy(void) {
 
       else
         err("verify_vaildate_data", "Unknown event data");
+
+      handle_state(event_data);
     }
   }
 
@@ -308,7 +304,8 @@ bool start_proxy(void) {
 void handle_state(Event *event_data) {
   Connection *conn = event_data->data.ptr;
 
-  if (conn->state == VERIFY_REQUEST) // verify_request may change the state
+  // verify_request may change the state, so it goes first
+  if (conn->state == VERIFY_REQUEST)
     verify_request(conn);
 
   if (conn->state == READ_REQUEST) // read more
@@ -320,6 +317,8 @@ void handle_state(Event *event_data) {
     mod_in_epoll(event_data, WRITE_FLAGS);
   else if (conn->state == WRITE_REQUEST) // contact upstream
     mod_in_epoll(event_data, WRITE_FLAGS);
+  else if (conn->state == CLOSE_CONN) // client disconnect
+    del_from_epoll(event_data);
 }
 
 void free_upstream_addrinfo(void) {

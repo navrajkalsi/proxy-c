@@ -17,7 +17,8 @@ typedef enum {
   WRITE_ERROR,
   WRITE_RESPONSE,
   READ_RESPONSE,
-  WRITE_REQUEST
+  WRITE_REQUEST,
+  CLOSE_CONN
 } State;
 
 // struct to be used for adding/modding/deleting to the epoll instance
