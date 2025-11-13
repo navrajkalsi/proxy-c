@@ -248,17 +248,15 @@ bool start_proxy(void) {
     // now checking each event and handling it on basis of event specified
     for (int i = 0; i < ready_events; ++i) {
       uint32_t events = epoll_events[i].events;
-      Event *event_data = epoll_events[i].data.ptr;
-      DataType type = event_data->data_type;
-      Connection *conn = type != TYPE_FD ? event_data->data.ptr : NULL;
+      Event *event = epoll_events[i].data.ptr;
+      DataType type = event->data_type;
+      Connection *conn = type != TYPE_FD ? event->data.ptr : NULL;
 
       if (type == TYPE_FD) // new client
-        accept_client(event_data->data.fd);
+        accept_client(event->data.fd);
 
       else if (type == TYPE_PTR_CLIENT && events & EPOLLIN) // read from client
-        read_client(event_data);
-
-      // handle upstream and client in handle_state
+        read_client(event);
 
       else if (type == TYPE_PTR_UPSTREAM &&
                events & EPOLLIN) // read from upstream
@@ -290,7 +288,7 @@ bool start_proxy(void) {
       else
         err("verify_vaildate_data", "Unknown event data");
 
-      handle_state(event_data);
+      handle_state(event);
     }
   }
 
@@ -301,24 +299,55 @@ bool start_proxy(void) {
   return true;
 }
 
-void handle_state(Event *event_data) {
-  Connection *conn = event_data->data.ptr;
+void handle_state(Event *event) {
+  if (event->data_type == TYPE_FD)
+    return;
+
+  Connection *conn = event->data.ptr;
+
+  switch (conn->state) {
+  case READ_REQUEST:
+    puts("read_request");
+    break;
+  case VERIFY_REQUEST:
+    puts("verify_request");
+    break;
+  case WRITE_ERROR:
+    puts("write_error");
+    break;
+  case WRITE_RESPONSE:
+    puts("write_response");
+    break;
+  case READ_RESPONSE:
+    puts("read_response");
+    break;
+  case WRITE_REQUEST:
+    puts("write_request");
+    break;
+  case CLOSE_CONN:
+    puts("close_conn");
+    break;
+  }
 
   // verify_request may change the state, so it goes first
   if (conn->state == VERIFY_REQUEST)
     verify_request(conn);
 
+  if (conn->state == CLOSE_CONN) // client disconnect or something else
+    del_from_epoll(event);
+
   if (conn->state == READ_REQUEST) // read more
-    mod_in_epoll(event_data, READ_FLAGS);
+    mod_in_epoll(event, READ_FLAGS);
   else if (conn->state ==
            WRITE_ERROR) // error from reading request or verifying request
-    mod_in_epoll(event_data, WRITE_FLAGS);
+    mod_in_epoll(event, WRITE_FLAGS);
   else if (conn->state == WRITE_RESPONSE) // send error response
-    mod_in_epoll(event_data, WRITE_FLAGS);
-  else if (conn->state == WRITE_REQUEST) // contact upstream
-    mod_in_epoll(event_data, WRITE_FLAGS);
-  else if (conn->state == CLOSE_CONN) // client disconnect
-    del_from_epoll(event_data);
+    mod_in_epoll(event, WRITE_FLAGS);
+  else
+    err("handle_state", "Unknown state for client, logic error");
+
+  if (conn->state == WRITE_REQUEST) // contact upstream
+    mod_in_epoll(event, WRITE_FLAGS);
 }
 
 void free_upstream_addrinfo(void) {

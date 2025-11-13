@@ -430,6 +430,32 @@ bool find_last_chunk_partial(Connection *conn, ptrdiff_t index) {
 bool verify_request(Connection *conn) {
   if (!conn)
     return set_efault();
+
+  // tmp null termination
+  char *org_ptr = conn->client_buffer + conn->client_headers.len,
+       org_char = *org_ptr;
+  *org_ptr = '\0';
+
+  Str host = ERR_STR;
+  if (!get_header_value(conn->client_headers.data, "Host",
+                        &host)) { // host header not found
+    conn->client_status = 400;
+    goto error;
+  }
+
+  if (strlen(config.upstream) != (size_t)host.len ||
+      memcmp(config.upstream, host.data, host.len) != 0) { // host mismatch
+    conn->client_status = 301;
+    goto error;
+  }
+
+  *org_ptr = org_char;
+  return true;
+
+error:
+  conn->state = WRITE_ERROR;
+  *org_ptr = org_char;
+  return false;
 }
 
 bool handle_error_response(Connection *conn) {

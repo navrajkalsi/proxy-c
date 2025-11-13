@@ -33,7 +33,7 @@ bool connect_upstream(int *upstream_fd);
 bool start_proxy(void);
 
 // mods state of the connection
-void handle_state(Event *event_data);
+void handle_state(Event *event);
 
 void free_upstream_addrinfo(void);
 

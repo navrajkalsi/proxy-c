@@ -28,9 +28,9 @@ typedef enum {
 typedef struct event {
   epoll_data_t data; // union
   struct event *
-      *self_ptr; // this will be an element of active_events array, used to
-                 // deactive/remove from active_events(just make this NULL)
-  DataType data_type;
+      *self_ptr;      // this will be an element of active_events array, used to
+                      // deactive/remove from active_events(just make this NULL)
+  DataType data_type; // what to target in union
 } Event;
 
 // helper struct to organize client and server communication
