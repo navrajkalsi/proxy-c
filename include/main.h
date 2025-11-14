@@ -1,5 +1,6 @@
 #pragma once
 
+#include <regex.h>
 #include <stdbool.h>
 
 #include "args.h"
@@ -62,3 +63,4 @@
 
 extern bool RUNNING;
 extern Config config;
+extern regex_t origin_regex;

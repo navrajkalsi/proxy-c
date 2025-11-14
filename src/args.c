@@ -150,23 +150,5 @@ bool validate_upstream(char *upstream) {
   if (!upstream)
     return set_efault();
 
-  regex_t regex;
-  memset(&regex, 0, sizeof regex);
-  int status = 0;
-  char error_string[256];
-
-  if ((status = regcomp(&regex, ORIGIN_REGEX,
-                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
-    regerror(status, &regex, error_string, sizeof error_string);
-    return err("regcomp", error_string);
-  }
-
-  if ((status = regexec(&regex, upstream, 0, NULL, 0)) != 0) {
-    regerror(status, &regex, error_string, sizeof error_string);
-    regfree(&regex);
-    return err("regexec", error_string);
-  }
-
-  regfree(&regex);
-  return true;
+  return exec_regex(&origin_regex, upstream);
 }

@@ -11,37 +11,6 @@
 #include "proxy.h"
 #include "utils.h"
 
-Event *init_event(DataType data_type, epoll_data_t data) {
-  Event *result;
-  if (!(result = malloc(sizeof(Event)))) {
-    err("malloc", strerror(errno));
-    return NULL;
-  }
-
-  result->data_type = data_type;
-  result->data = data;
-
-  if (!activate_event(result)) {
-    err("activate_event",
-        errno ? strerror(errno) : "Max limit of active connections reached");
-    free(result);
-    return NULL;
-  }
-
-  return result;
-}
-
-void free_event(Event **event) {
-  if (!event || !*event)
-    return;
-
-  Event *to_free = *event;
-  deactivate_event(*event);
-
-  free(to_free);
-  to_free = NULL;
-};
-
 Connection *init_connection(void) {
   Connection *conn;
   if (!(conn = malloc(sizeof(Connection)))) {
@@ -49,9 +18,17 @@ Connection *init_connection(void) {
     return NULL;
   }
 
+  if (!activate_conn(conn)) {
+    err("activate_conn",
+        errno ? strerror(errno) : "Max limit of active connections reached");
+    free(conn);
+    return NULL;
+  }
+
   memset(&conn->client_addr, 0, sizeof(struct sockaddr_storage));
 
-  conn->state = READ_REQUEST;
+  conn->state =
+      READ_REQUEST; // remember to assign as ACCEPT_CONN, incase of proxy_fd
 
   // client
   conn->client_fd = -1;
@@ -71,6 +48,9 @@ Connection *init_connection(void) {
   conn->http_ver = STR(FALLBACK_HTTP_VER);
   conn->upstream_response = conn->request_host = conn->request_path =
       conn->connection = ERR_STR;
+
+  // proxy
+  conn->proxy_fd = -1;
   return conn;
 }
 
@@ -78,41 +58,33 @@ void free_connection(Connection **conn) {
   if (!conn || !*conn)
     return;
 
-  free(*conn);
-  *conn = NULL;
+  Connection *to_free = *conn;
+  deactivate_conn(*conn);
+
+  free(to_free);
+  to_free = NULL;
 }
 
-void free_event_conn(Event **event) {
-  if (!event || !*event)
-    return;
-
-  Connection *conn = (*event)->data.ptr;
-  if ((*event)->data_type != TYPE_FD)
-    free_connection(&conn);
-
-  free_event(event);
-}
-
-bool activate_event(Event *event) {
-  if (!event)
+bool activate_conn(Connection *conn) {
+  if (!conn)
     return set_efault();
 
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
-    if (!active_events[i]) {
-      active_events[i] = event;
-      event->self_ptr = active_events + i;
+    if (!active_conns[i]) {
+      active_conns[i] = conn;
+      conn->self_ptr = active_conns + i;
       return true;
     }
 
   return false;
 }
 
-void deactivate_event(Event *event) {
-  if (!event)
+void deactivate_conn(Connection *conn) {
+  if (!conn)
     return;
 
-  *(event->self_ptr) = NULL;
-  event->self_ptr = NULL;
+  *(conn->self_ptr) = NULL;
+  conn->self_ptr = NULL;
 }
 
 // after non_block all the system calls on this fd return instantly,
@@ -128,71 +100,39 @@ bool set_non_block(int fd) {
 // adds the entry in the interest list of epoll instance
 // essentially adds fd to epoll_fd list and the event specifies what to
 // wait for & what fd to do that for
-bool add_to_epoll(Event *event, int flags) {
+bool add_to_epoll(Connection *conn, int fd, int flags) {
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
-  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)event};
-  int new_fd = -1;
+  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)conn};
 
-  // only proxy_fd(listening sock) is added as fd
-  if (event->data_type == TYPE_FD)
-    new_fd = event->data.fd;
-  else {
-    Connection *conn = event->data.ptr;
-    if (event->data_type == TYPE_PTR_CLIENT)
-      new_fd = conn->client_fd;
-    else if (event->data_type == TYPE_PTR_UPSTREAM)
-      new_fd = conn->upstream_fd;
-  }
-
-  if (new_fd == -1)
+  if (fd == -1)
     return err("get_target_fd",
                "Socket is probably being added to epoll before "
-               "accepting/connecting, or check event.data_type");
+               "accepting/connecting");
 
-  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, new_fd, &epoll_event) == -1)
+  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, fd, &epoll_event) == -1)
     return err("epoll_ctl", strerror(errno));
 
   return true;
 }
 
-bool mod_in_epoll(Event *event, int flags) {
+bool mod_in_epoll(Connection *conn, int fd, int flags) {
+  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)conn};
 
-  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)event};
-  int org_fd = -1;
-  Connection *conn = event->data.ptr;
-
-  if (event->data_type == TYPE_PTR_CLIENT)
-    org_fd = conn->client_fd;
-  else if (event->data_type == TYPE_PTR_UPSTREAM)
-    org_fd = conn->upstream_fd;
-  else
-    return err("get_target_fd", "Data type is not valid for modification");
-
-  if (org_fd == -1)
+  if (fd == -1)
     return err("get_target_fd", "Socket fd is not initialized, logic error");
 
-  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, org_fd, &epoll_event) == -1)
+  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, fd, &epoll_event) == -1)
     return err("epoll_ctl", strerror(errno));
 
   return true;
 }
 
-bool del_from_epoll(Event *event) {
-  int org_fd = -1;
-  Connection *conn = event->data.ptr;
+bool del_from_epoll(int fd) {
+  if (fd == -1)
+    return err("get_target_fd", "Socket fd is not initialized");
 
-  if (event->data_type == TYPE_PTR_CLIENT)
-    org_fd = conn->client_fd;
-  else if (event->data_type == TYPE_PTR_UPSTREAM)
-    org_fd = conn->upstream_fd;
-  else
-    return err("get_target_fd", "Data type is not valid for modification");
-
-  if (org_fd == -1)
-    return err("get_target_fd", "Socket fd is not initialized, logic error");
-
-  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, org_fd, NULL) == -1)
+  if (epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL) == -1)
     return err("epoll_ctl", strerror(errno));
 
   return true;

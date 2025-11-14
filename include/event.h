@@ -8,10 +8,8 @@
 #include "main.h"
 #include "utils.h"
 
-// if connection is storing a fd (only in case of listening sock) or ptr
-typedef enum { TYPE_FD, TYPE_PTR_CLIENT, TYPE_PTR_UPSTREAM } DataType;
-
 typedef enum {
+  ACCEPT_CONN, // only if proxy_fd is set
   READ_REQUEST,
   VERIFY_REQUEST,
   WRITE_ERROR,
@@ -22,19 +20,9 @@ typedef enum {
 } State;
 
 // struct to be used for adding/modding/deleting to the epoll instance
-// every epoll_event in the epoll instance will have its data as a pointer to
-// this struct
-// this structs data will depend on the data_type, pointer or fd
-typedef struct event {
-  epoll_data_t data; // union
-  struct event *
-      *self_ptr;      // this will be an element of active_events array, used to
-                      // deactive/remove from active_events(just make this NULL)
-  DataType data_type; // what to target in union
-} Event;
-
-// helper struct to organize client and server communication
-// this will be the pointer that is added to epoll data
+// every epoll_event.data in the epoll instance will have its data as a pointer
+// to this struct
+// target fd will depend on the state of the conn
 typedef struct connection {
   char client_buffer[BUFFER_SIZE], upstream_buffer[BUFFER_SIZE];
   struct sockaddr_storage client_addr; // filled by accept()
@@ -59,37 +47,35 @@ typedef struct connection {
 
   Str upstream_response, request_host, request_path, http_ver, connection;
   int upstream_fd;
+
+  struct Connection *
+      *self_ptr; // this will be an element of active_conns array, used to
+                 // deactive/remove from active_conns(just make this NULL)
+
+  int proxy_fd;
 } Connection;
 
-// Returns a pointer to Event that needs to be added to the epoll_instance
-Event *init_event(DataType data_type, epoll_data_t data);
-
-void free_event(Event **event);
-
+// Returns a pointer to conn that needs to be added to the epoll_instance
+// & activates it
 Connection *init_connection(void);
 
 void free_connection(Connection **conn);
 
-// frees both event and the connection it points to
-void free_event(Event **event);
+// adds conn to the active_conns array
+bool activate_conn(Connection *conn);
 
-void free_event_conn(Event **event);
-
-// adds event to the active_conns array
-bool activate_event(Event *event);
-
-// removes event from active_events array
+// removes event from active_conns array
 // by making self_ptr NULL which make the array entry NULL
-void deactivate_event(Event *event);
+void deactivate_conn(Connection *conn);
 
 // calls fcntl to set non block option on a socket
 bool set_non_block(int fd);
 
 // calls epoll_ctl with EPOLL_CTL_ADD
-bool add_to_epoll(Event *event, int flags);
+bool add_to_epoll(Connection *conn, int fd, int flags);
 
 // epoll_ctl with EPOLL_CTL_MOD
-bool mod_in_epoll(Event *event, int flags);
+bool mod_in_epoll(Connection *conn, int fd, int flags);
 
 // epoll_ctl with EPOLL_CTL_DEL
-bool del_from_epoll(Event *event);
+bool del_from_epoll(int fd);

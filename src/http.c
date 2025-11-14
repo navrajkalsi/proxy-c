@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "http.h"
 #include "main.h"
@@ -71,28 +72,14 @@ bool validate_host(const Str *header) {
   // limitations of the check, for now:
   // does not support: use of ip addresses directly
 
-  regex_t regex;
-  memset(&regex, 0, sizeof regex);
-  int status = 0;
-  char error_string[256];
-
-  if ((status = regcomp(&regex, ORIGIN_REGEX,
-                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
-    regerror(status, &regex, error_string, sizeof error_string);
-    return err("regcomp", error_string);
-  }
-
   // tmp null termination
   char org_end = header->data[header->len];
   header->data[header->len] = '\0';
-  if ((status = regexec(&regex, header->data, 0, NULL, 0)) != 0) {
-    regerror(status, &regex, error_string, sizeof error_string);
-    regfree(&regex);
+  if (!exec_regex(&origin_regex, header->data)) {
     header->data[header->len] = org_end;
-    return err("regexec", error_string);
+    return err("exec_regex", NULL);
   }
 
-  regfree(&regex);
   header->data[header->len] = org_end;
 
   // comparing it to the upstream

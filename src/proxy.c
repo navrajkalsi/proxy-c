@@ -16,7 +16,7 @@
 // global var that stores a linked list of struct addrinfo containing info about
 // upstream server
 struct addrinfo *upstream_addrinfo = NULL;
-Event *active_events[MAX_CONNECTIONS] = {0};
+Connection *active_conns[MAX_CONNECTIONS] = {0};
 
 bool setup_proxy(Config *config, int *proxy_fd) {
   if (!config || !proxy_fd)
@@ -114,12 +114,15 @@ bool setup_epoll(int proxy_fd) {
     return err("epoll_create", strerror(errno));
 
   // adding proxy_fd to epoll as the listening socket
-  Event *event = NULL;
-  if (!(event = init_event(TYPE_FD, (epoll_data_t)proxy_fd)))
-    return err("init_event", NULL);
+  Connection *conn = NULL;
+  if (!(conn = init_connection()))
+    return err("init_connection", NULL);
+
+  conn->proxy_fd = proxy_fd;
+  conn->state = ACCEPT_CONN;
 
   // EPOLLERR & EPOLLHUP do not need to be added manually
-  if (!add_to_epoll(event, EPOLLIN | EPOLLERR | EPOLLHUP))
+  if (!add_to_epoll(conn, proxy_fd, EPOLLIN | EPOLLERR | EPOLLHUP))
     return err("add_to_epoll", NULL);
 
   return true;
@@ -248,21 +251,21 @@ bool start_proxy(void) {
     // now checking each event and handling it on basis of event specified
     for (int i = 0; i < ready_events; ++i) {
       uint32_t events = epoll_events[i].events;
-      Event *event = epoll_events[i].data.ptr;
-      DataType type = event->data_type;
-      Connection *conn = type != TYPE_FD ? event->data.ptr : NULL;
+      Connection *conn = epoll_events[i].data.ptr;
 
-      if (type == TYPE_FD) // new client
-        accept_client(event->data.fd);
+      if (conn->state == ACCEPT_CONN) // new client
+        accept_client(conn->proxy_fd);
 
-      else if (type == TYPE_PTR_CLIENT && events & EPOLLIN) // read from client
-        read_client(event);
+      else if (conn->state == READ_REQUEST &&
+               events & EPOLLIN) // read from client
+        read_client(conn);
 
-      else if (type == TYPE_PTR_UPSTREAM &&
+      else if (conn->state == READ_RESPONSE &&
                events & EPOLLIN) // read from upstream
         puts("Ready to read from server");
 
-      else if (type == TYPE_PTR_CLIENT && events & EPOLLOUT) { // send to client
+      else if (conn->state == WRITE_RESPONSE &&
+               events & EPOLLOUT) { // send to client
         if (conn->client_status &&
             conn->client_status != 200) { // error during read, did not contact
                                           // upstream
@@ -274,7 +277,7 @@ bool start_proxy(void) {
           puts("Ready to send to client");
       }
 
-      else if (type == TYPE_PTR_UPSTREAM &&
+      else if (conn->state == WRITE_REQUEST &&
                events & EPOLLOUT) // send to upstream
         puts("Ready to send to upstream");
 
@@ -288,7 +291,7 @@ bool start_proxy(void) {
       else
         err("verify_vaildate_data", "Unknown event data");
 
-      handle_state(event);
+      handle_state(conn);
     }
   }
 
@@ -299,11 +302,9 @@ bool start_proxy(void) {
   return true;
 }
 
-void handle_state(Event *event) {
-  if (event->data_type == TYPE_FD)
+void handle_state(Connection *conn) {
+  if (conn->state == ACCEPT_CONN)
     return;
-
-  Connection *conn = event->data.ptr;
 
   switch (conn->state) {
   case READ_REQUEST:
@@ -327,13 +328,19 @@ void handle_state(Event *event) {
   case CLOSE_CONN:
     puts("close_conn");
     break;
+  case ACCEPT_CONN:
+    puts("accept conn");
+    break;
   }
 
   // verify_request may change the state, so it goes first
   if (conn->state == VERIFY_REQUEST)
     verify_request(conn);
 
+  // CHANGE ALL EVENT TO CONNS
+
   if (conn->state == CLOSE_CONN) // client disconnect or something else
+                                 // TODO: free resources
     del_from_epoll(event);
 
   if (conn->state == READ_REQUEST) // read more

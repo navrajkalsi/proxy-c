@@ -1,5 +1,6 @@
 #pragma once
 
+#include <regex.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <time.h>
@@ -93,3 +94,9 @@ void print_active_num(void);
 // check before if num is 0, the function does not handle 0 as num
 // this function does not malloc!
 void int_to_string(int num, char *out);
+
+// for compiling regex for ORIGIN_URL, use at startup once for the lifetime
+bool compile_regex(void);
+
+// encapsulating error reporting
+bool exec_regex(const regex_t *regex, const char *match);

@@ -276,3 +276,32 @@ void int_to_string(int num, char *out) {
   int_to_string(num / 10, out);
   *(out + pos++) = (char)((num % 10) + '0');
 }
+
+bool compile_regex() {
+  memset(&origin_regex, 0, sizeof origin_regex);
+  int status = 0;
+  char error_string[256];
+
+  if ((status = regcomp(&origin_regex, ORIGIN_REGEX,
+                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
+    regerror(status, &origin_regex, error_string, sizeof error_string);
+    return err("regcomp", error_string);
+  }
+
+  return true;
+}
+
+bool exec_regex(const regex_t *regex, const char *match) {
+  if (!regex || !match)
+    return set_efault();
+
+  int status = 0;
+  char error_string[256];
+
+  if ((status = regexec(regex, match, 0, NULL, 0)) != 0) {
+    regerror(status, regex, error_string, sizeof error_string);
+    return err("regexec", error_string);
+  }
+
+  return true;
+}

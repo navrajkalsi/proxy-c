@@ -431,6 +431,8 @@ bool verify_request(Connection *conn) {
   if (!conn)
     return set_efault();
 
+  // IMPLEMENT VALIDATE_REQUEST FROM HTTP.C HERE
+
   // tmp null termination
   char *org_ptr = conn->client_buffer + conn->client_headers.len,
        org_char = *org_ptr;

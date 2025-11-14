@@ -7,10 +7,10 @@
 #include "main.h"
 #include "poll.h"
 
-// global array of eventData structs that were added to the epoll table
-// init_event_data() & free_event_data() add and remove from this array
+// global array of conn structs that were added to the epoll table
+// init & free conn() add and remove from this array
 // automatically
-extern Event *active_events[MAX_CONNECTIONS];
+extern Connection *active_conns[MAX_CONNECTIONS];
 
 extern int EPOLL_FD;
 
@@ -33,7 +33,7 @@ bool connect_upstream(int *upstream_fd);
 bool start_proxy(void);
 
 // mods state of the connection
-void handle_state(Event *event);
+void handle_state(Connection *conn);
 
 void free_upstream_addrinfo(void);
 

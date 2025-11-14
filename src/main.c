@@ -1,6 +1,8 @@
+#include "main.h"
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <regex.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -12,12 +14,16 @@
 bool RUNNING = true;
 Config config = {.port = NULL, .accept_all = false, .upstream = NULL};
 int EPOLL_FD = -1;
+regex_t origin_regex;
 
 int main(int argc, char *argv[]) {
   if (!setup_sig_handler()) {
     err("setup_sig_handler", strerror(errno));
     return -1;
   }
+
+  if (!compile_regex())
+    return -1;
 
   config = parse_args(argc, argv);
 
@@ -48,6 +54,8 @@ int main(int argc, char *argv[]) {
     err("start_proxy", strerror(errno));
     return -1;
   }
+
+  regfree(&origin_regex);
 
   return 0;
 }
