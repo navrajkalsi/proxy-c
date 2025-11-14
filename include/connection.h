@@ -44,11 +44,13 @@ typedef struct connection {
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
                                             // read
   uint client_status;
+  Str http_ver;
+  Str connection;
 
-  Str upstream_response, request_host, request_path, http_ver, connection;
+  Str upstream_response;
   int upstream_fd;
 
-  struct Connection *
+  struct connection *
       *self_ptr; // this will be an element of active_conns array, used to
                  // deactive/remove from active_conns(just make this NULL)
 
@@ -57,9 +59,9 @@ typedef struct connection {
 
 // Returns a pointer to conn that needs to be added to the epoll_instance
 // & activates it
-Connection *init_connection(void);
+Connection *init_conn(void);
 
-void free_connection(Connection **conn);
+void free_conn(Connection **conn);
 
 // adds conn to the active_conns array
 bool activate_conn(Connection *conn);

@@ -6,12 +6,12 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
-#include "event.h"
+#include "connection.h"
 #include "main.h"
 #include "proxy.h"
 #include "utils.h"
 
-Connection *init_connection(void) {
+Connection *init_conn(void) {
   Connection *conn;
   if (!(conn = malloc(sizeof(Connection)))) {
     err("malloc", strerror(errno));
@@ -38,23 +38,26 @@ Connection *init_connection(void) {
   conn->read_index = 0;
   conn->write_index = 0;
   conn->to_read = BUFFER_SIZE - 1;
+  conn->to_write = 0;
   conn->chunked = false;
-  conn->headers_found = false;
   conn->next_index = 0;
-  conn->client_status = 0;
+  conn->headers_found = false;
   *conn->last_chunk_found = '\0';
-
-  conn->client_fd = conn->upstream_fd = -1;
+  conn->client_status = 0;
   conn->http_ver = STR(FALLBACK_HTTP_VER);
-  conn->upstream_response = conn->request_host = conn->request_path =
-      conn->connection = ERR_STR;
+  conn->connection = ERR_STR;
+
+  // upstream
+  conn->upstream_fd = -1;
+  conn->upstream_response = ERR_STR;
 
   // proxy
   conn->proxy_fd = -1;
+
   return conn;
 }
 
-void free_connection(Connection **conn) {
+void free_conn(Connection **conn) {
   if (!conn || !*conn)
     return;
 

@@ -3,7 +3,7 @@
 #include <netdb.h>
 
 #include "args.h"
-#include "event.h"
+#include "connection.h"
 #include "main.h"
 #include "poll.h"
 

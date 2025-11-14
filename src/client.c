@@ -16,7 +16,6 @@
 #include <unistd.h>
 
 #include "client.h"
-#include "event.h"
 #include "http.h"
 #include "main.h"
 #include "utils.h"
@@ -25,25 +24,19 @@ void accept_client(int proxy_fd) {
   // looping, as epoll might be waken up by multiple incoming requests
   while (RUNNING) {
     Connection *conn = NULL;
-    Event *event = NULL;
 
-    if (!(conn = init_connection())) {
-      err("init_connection", NULL);
+    if (!(conn = init_conn())) {
+      err("init_conn", NULL);
       break;
     }
 
-    if (!(event = init_event(TYPE_PTR_CLIENT, (epoll_data_t)(void *)conn))) {
-      free_connection(&conn);
-      err("init_event", NULL);
-      break;
-    }
     socklen_t addr_len = sizeof conn->client_addr;
 
     if ((conn->client_fd =
              accept(proxy_fd, (struct sockaddr *)&conn->client_addr,
                     &addr_len)) == -1) {
 
-      free_event_conn(&event);
+      free_conn(&conn);
 
       if (errno == EINTR && !RUNNING) // shutdown
         break;
@@ -61,13 +54,13 @@ void accept_client(int proxy_fd) {
     // TODO: think what if the client does not make a request forever
 
     if (!set_non_block(conn->client_fd)) {
-      free_event_conn(&event);
+      free_conn(&conn);
       err("set_non_block", NULL);
       continue;
     }
 
-    if (!add_to_epoll(event, READ_FLAGS)) {
-      free_event_conn(&event);
+    if (!add_to_epoll(conn, conn->client_fd, READ_FLAGS)) {
+      free_conn(&conn);
       err("add_to_epoll", NULL);
       continue;
     }
@@ -77,15 +70,11 @@ void accept_client(int proxy_fd) {
   return;
 }
 
-void read_client(const Event *event) {
-  if (!event)
+void read_client(Connection *conn) {
+  if (!conn)
     goto error;
 
-  Connection *conn = event->data.ptr;
-
-  // event SHOULD ALWAYS contain the data as a pointer to a conn
-  assert(event->data_type == TYPE_PTR_CLIENT);
-  assert(conn && conn->state == READ_REQUEST);
+  assert(conn->state == READ_REQUEST);
 
   // in case continuing to read after dealing with previous request
   if (conn->next_index)

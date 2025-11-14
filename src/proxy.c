@@ -115,8 +115,8 @@ bool setup_epoll(int proxy_fd) {
 
   // adding proxy_fd to epoll as the listening socket
   Connection *conn = NULL;
-  if (!(conn = init_connection()))
-    return err("init_connection", NULL);
+  if (!(conn = init_conn()))
+    return err("init_conn", NULL);
 
   conn->proxy_fd = proxy_fd;
   conn->state = ACCEPT_CONN;
@@ -288,9 +288,6 @@ bool start_proxy(void) {
       else if (events & EPOLLERR)
         puts("error");
 
-      else
-        err("verify_vaildate_data", "Unknown event data");
-
       handle_state(conn);
     }
   }
@@ -341,20 +338,20 @@ void handle_state(Connection *conn) {
 
   if (conn->state == CLOSE_CONN) // client disconnect or something else
                                  // TODO: free resources
-    del_from_epoll(event);
+    del_from_epoll(0);
 
   if (conn->state == READ_REQUEST) // read more
-    mod_in_epoll(event, READ_FLAGS);
+    mod_in_epoll(conn, conn->client_fd, READ_FLAGS);
   else if (conn->state ==
            WRITE_ERROR) // error from reading request or verifying request
-    mod_in_epoll(event, WRITE_FLAGS);
+    mod_in_epoll(conn, conn->client_fd, WRITE_FLAGS);
   else if (conn->state == WRITE_RESPONSE) // send error response
-    mod_in_epoll(event, WRITE_FLAGS);
+    mod_in_epoll(conn, conn->upstream_fd, WRITE_FLAGS);
   else
     err("handle_state", "Unknown state for client, logic error");
 
   if (conn->state == WRITE_REQUEST) // contact upstream
-    mod_in_epoll(event, WRITE_FLAGS);
+    mod_in_epoll(conn, conn->upstream_fd, WRITE_FLAGS);
 }
 
 void free_upstream_addrinfo(void) {
@@ -364,6 +361,6 @@ void free_upstream_addrinfo(void) {
 
 void free_active_conns(void) {
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
-    if (active_events[i])
-      free_event_conn(active_events + i);
+    if (active_conns[i])
+      free_conn(active_conns + i);
 }

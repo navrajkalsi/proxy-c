@@ -45,7 +45,7 @@ Str drophead(Str str, ptrdiff_t drop);
 Cut cut(Str str, char sep);
 
 // checks if str contains chars anywhere
-// returns the index (if found), otherwise 0
+// returns the index (if found), otherwise -1
 ptrdiff_t contains(const Str *str, const char *chars);
 
 // error node, with name of the errored funciton and its error description

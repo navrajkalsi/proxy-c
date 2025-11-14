@@ -55,6 +55,8 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
+  free_active_conns();
+
   regfree(&origin_regex);
 
   return 0;

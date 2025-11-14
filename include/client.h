@@ -3,13 +3,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "event.h"
+#include "connection.h"
 
 // calls accept on listening socket fd and adds it to the epoll instance
 void accept_client(int proxy_fd);
 
 // called after EPOLLIN is detected on a client socketclient conn
-void read_client(const Event *event);
+void read_client(Connection *conn);
 
 // whether to read more and how much to read more
 bool verify_read(Connection *conn);
