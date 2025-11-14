@@ -47,7 +47,4 @@ bool generate_error_response(Connection *conn);
 // to send an error directly without contacting upstream
 bool write_error_response(Connection *conn);
 
-// to send an error directly without contacting upstream
-bool write_error_response1(Connection *conn);
-
 bool write_str(const Connection *conn, const Str *write);

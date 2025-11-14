@@ -420,39 +420,62 @@ bool verify_request(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  // IMPLEMENT VALIDATE_REQUEST FROM HTTP.C HERE
+  assert(conn->state == VERIFY_REQUEST);
 
-  // tmp null termination
-  char *org_ptr = conn->client_buffer + conn->client_headers.len,
-       org_char = *org_ptr;
-  *org_ptr = '\0';
+  Str headers = conn->client_headers;
+  Cut c = cut(headers, ' ');
 
-  Str host = ERR_STR;
-  if (!get_header_value(conn->client_headers.data, "Host",
-                        &host)) { // host header not found
+  // verifying method
+  if (!c.found) {
     conn->client_status = 400;
-    goto error;
+    return err("validate_method", "Invalid request");
+  } else if (!validate_method(c.head)) {
+    conn->client_status = 405;
+    return err("validate_method", "Invalid method");
   }
 
-  if (strlen(config.upstream) != (size_t)host.len ||
-      memcmp(config.upstream, host.data, host.len) != 0) { // host mismatch
+  // finding request path
+  c = cut(c.tail, ' ');
+
+  if (!c.found) {
+    conn->client_status = 400;
+    return err("validate_path", "Invalid request");
+  }
+  conn->path = c.head;
+
+  // finding http version
+  c = cut(c.tail, '\r');
+
+  if (!c.found) {
+    conn->client_status = 400;
+    return err("validate_http_ver", "Invalid request");
+  } else if (!validate_http(c.head)) {
+    conn->client_status = 500;
+    return err("validate_http_ver", "Invalid HTTP version");
+  }
+  conn->http_ver = c.head;
+
+  // finding the host header
+  if (!get_header_value(c.tail.data, "Host", &conn->host)) {
+    conn->client_status = 400;
+    return err("get_header_value", "Host header not found");
+  }
+
+  if (!validate_host(&conn->host)) {
     conn->client_status = 301;
-    goto error;
+    return err("validate_host", "Different host in the request header");
   }
 
-  *org_ptr = org_char;
-  return true;
+  conn->client_status = 200;
 
-error:
-  conn->state = WRITE_ERROR;
-  *org_ptr = org_char;
-  return false;
+  return true;
 }
 
 bool handle_error_response(Connection *conn) {
   if (!conn)
     return set_efault();
 
+  assert(conn->state == WRITE_ERROR);
   assert(conn->client_status && conn->client_status >= 300);
 
   // using upstream buffer as client buffer may contain another request, but
@@ -570,81 +593,6 @@ bool write_error_response(Connection *conn) {
     else
       return err("write", strerror(errno));
   }
-
-  return true;
-}
-
-bool write_error_response1(Connection *conn) {
-  if (!conn)
-    return set_efault();
-
-  char date_data[DATE_LEN];
-  Str date_header = {.data = date_data, .len = DATE_LEN};
-
-  if (!set_date_str(&date_header))
-    return err("set_date", NULL);
-
-  if (!set_connection(conn))
-    return err("set_connection", NULL);
-
-  Str error_body_start = STR("<html>\n<head>\n<title>Error</title>\n</"
-                             "head>\n<body>\n<center><h1>");
-
-  Str error_body_end =
-      STR("</h1></center>\n<hr><center>Proxy-C</center>\n</body>\n</html>");
-
-  Str status_str = get_status_str(conn->client_status);
-
-  ptrdiff_t body_size =
-      error_body_start.len + error_body_end.len + status_str.len;
-
-  // calculating number of bytes required to hold the final length
-  // mostly will be 3, still checking
-  int divisor = 1, num_of_digits = 0;
-  while (body_size / divisor > 0 && ++num_of_digits)
-    divisor *= 10;
-
-  char content_len_data[num_of_digits];
-  memset(content_len_data, 0, num_of_digits);
-
-  int_to_string(body_size, content_len_data);
-  if (!content_len_data[0])
-    return err("int_to_string", NULL);
-
-  Str content_length = {.data = content_len_data, .len = num_of_digits};
-
-  const Str headers[] = {conn->http_ver,
-                         SPACE_STR,
-                         status_str,
-                         LINEBREAK_STR,
-                         STR("Server: "),
-                         STR(SERVER),
-                         LINEBREAK_STR,
-                         STR("Date: "),
-                         date_header,
-                         LINEBREAK_STR,
-                         STR("Content-Type: text/html"),
-                         LINEBREAK_STR,
-                         STR("Content-Length: "),
-                         content_length,
-                         LINEBREAK_STR,
-                         STR("Connection: "),
-                         conn->connection,
-                         LINEBREAK_STR,
-                         STR("Location: "),
-                         (Str){.data = config.upstream,
-                               .len = strlen(config.upstream)},
-                         TRAILER_STR},
-            body[] = {error_body_start, status_str, error_body_end,
-                      TRAILER_STR};
-
-  for (size_t i = 0; i < sizeof headers / sizeof(Str); i++)
-    if (!write_str(conn, &headers[i]))
-      return err("write_str", strerror(errno));
-
-  for (size_t i = 0; i < sizeof body / sizeof(Str); i++)
-    if (!write_str(conn, &body[i]))
-      return err("write_str", strerror(errno));
 
   return true;
 }

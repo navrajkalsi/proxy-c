@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <time.h>
@@ -9,6 +10,7 @@
 
 #include "client.h"
 #include "event.h"
+#include "http.h"
 #include "main.h"
 #include "proxy.h"
 #include "utils.h"
@@ -331,10 +333,14 @@ void handle_state(Connection *conn) {
   }
 
   // verify_request may change the state, so it goes first
-  if (conn->state == VERIFY_REQUEST)
-    verify_request(conn);
+  if (conn->state == VERIFY_REQUEST) {
+    if (verify_request(conn))
+      conn->state = WRITE_REQUEST;
+    else
+      conn->state = WRITE_ERROR;
 
-  // CHANGE ALL EVENT TO CONNS
+    print_request(conn);
+  }
 
   if (conn->state == CLOSE_CONN) // client disconnect or something else
                                  // TODO: free resources

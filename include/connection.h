@@ -46,6 +46,8 @@ typedef struct connection {
   uint client_status;
   Str http_ver;
   Str connection;
+  Str path;
+  Str host;
 
   Str upstream_response;
   int upstream_fd;

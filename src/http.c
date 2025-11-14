@@ -13,58 +13,6 @@
 #include "main.h"
 #include "utils.h"
 
-bool validate_request(Connection *conn) {
-  if (!conn)
-    return set_efault();
-
-  Str request = conn->client_headers;
-  Cut c = cut(request, ' ');
-
-  // verifying method
-  if (!c.found) {
-    conn->client_status = 400;
-    return err("validate_method", "Invalid request");
-  } else if (!validate_method(c.head)) {
-    conn->client_status = 405;
-    return err("validate_method", "Invalid method");
-  }
-
-  // finding request path
-  c = cut(c.tail, ' ');
-
-  if (!c.found) {
-    conn->client_status = 400;
-    return err("validate_path", "Invalid request");
-  }
-  conn->request_path = c.head;
-
-  // finding http version
-  c = cut(c.tail, '\r');
-
-  if (!c.found) {
-    conn->client_status = 400;
-    return err("validate_http_ver", "Invalid request");
-  } else if (!validate_http(c.head)) {
-    conn->client_status = 500;
-    return err("validate_http", "Invalid HTTP version");
-  }
-  conn->http_ver = c.head;
-
-  // finding the host header
-  if (!get_header_value(c.tail.data, "Host", &conn->request_host)) {
-    conn->client_status = 400;
-    return err("get_header_value", "Host header not found");
-  }
-
-  if (!validate_host(&conn->request_host)) {
-    conn->client_status = 301;
-    return err("validate_host", "Different host in the request header");
-  }
-
-  conn->client_status = 200;
-  return true;
-}
-
 bool validate_host(const Str *header) {
   if (!header)
     return set_efault();
@@ -73,18 +21,18 @@ bool validate_host(const Str *header) {
   // does not support: use of ip addresses directly
 
   // tmp null termination
-  char org_end = header->data[header->len];
-  header->data[header->len] = '\0';
-  if (!exec_regex(&origin_regex, header->data)) {
-    header->data[header->len] = org_end;
-    return err("exec_regex", NULL);
-  }
+  char *org_ptr = header->data + header->len, org_char = *org_ptr;
 
-  header->data[header->len] = org_end;
+  *org_ptr = '\0';
+  bool match = exec_regex(&origin_regex, header->data);
+  *org_ptr = org_char;
+
+  if (!match)
+    return err("exec_regex", NULL);
 
   // comparing it to the upstream
-  size_t to_compare =
-      header->data[header->len - 1] == '/' ? header->len - 1 : header->len;
+  // last '/' is optional
+  size_t to_compare = *--org_ptr == '/' ? header->len - 1 : header->len;
 
   if (strlen(config.upstream) < to_compare ||
       memcmp(header->data, config.upstream, to_compare) != 0)
@@ -96,7 +44,6 @@ bool validate_host(const Str *header) {
 bool validate_method(const Str method) { return equals(method, STR("GET")); }
 
 bool validate_http(const Str http_ver) {
-  str_print(&http_ver);
   if (equals(http_ver, STR("HTTP/1.0")) || equals(http_ver, STR("HTTP/1.1")) ||
       equals(http_ver, STR("HTTP/2")) || equals(http_ver, STR("HTTP/3")))
     return true;
@@ -209,7 +156,7 @@ void print_request(const Connection *conn) {
   putchar(' ');
 
   // host
-  str_print(&conn->request_host);
+  str_print(&conn->host);
   putchar('\n');
 }
 

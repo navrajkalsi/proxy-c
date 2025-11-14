@@ -46,6 +46,8 @@ Connection *init_conn(void) {
   conn->client_status = 0;
   conn->http_ver = STR(FALLBACK_HTTP_VER);
   conn->connection = ERR_STR;
+  conn->host = ERR_STR;
+  conn->path = ERR_STR;
 
   // upstream
   conn->upstream_fd = -1;
