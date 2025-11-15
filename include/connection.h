@@ -5,7 +5,6 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 
-#include "http.h"
 #include "main.h"
 #include "utils.h"
 
@@ -24,9 +23,9 @@ typedef enum {
 typedef struct endpoint {
   char buffer[BUFFER_SIZE];
   int fd;
-  Str buf_segment; // for client: just request headers, for upstream full
-                   // response or part of it ready to be written. buffer may
-                   // contain more bytes than this
+  Str buf_view; // for client: just request headers, for upstream full
+                // response or part of it ready to be written. buffer may
+                // contain more bytes than this
   ptrdiff_t read_index;  // where to start reading again
   ptrdiff_t write_index; // where to start writing from
   size_t to_read;       // more bytes to read, incase content-length is provided
@@ -38,7 +37,6 @@ typedef struct endpoint {
                         // detected, in case of client
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
                                             // read
-  HTTP http;
 } Endpoint;
 
 // struct to be used for adding/modding/deleting to the epoll instance
@@ -50,6 +48,11 @@ typedef struct connection {
 
   Endpoint client;
   Endpoint upstream;
+
+  Str http_ver;
+  Str connection; // connection header
+  Str path;
+  Str host;
 
   int proxy_fd;
 

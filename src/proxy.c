@@ -201,6 +201,8 @@ void handle_state(Connection *conn) {
   if (conn->state == ACCEPT_CLIENT)
     return;
 
+  int *client_fd = &conn->client.fd, *upstream_fd = &conn->upstream.fd;
+
 again:
 
   log_state(conn->state);
@@ -213,7 +215,7 @@ again:
     break;
 
   case READ_REQUEST:
-    mod_in_epoll(conn, conn->client_fd, READ_FLAGS);
+    mod_in_epoll(conn, *client_fd, READ_FLAGS);
     break;
 
   case VERIFY_REQUEST:
@@ -225,37 +227,37 @@ again:
     goto again;
 
   case WRITE_ERROR:
-    mod_in_epoll(conn, conn->client_fd, WRITE_FLAGS);
+    mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
     break;
 
   case CONNECT_UPSTREAM:
-    if (connect_upstream(&conn->upstream_fd))
+    if (connect_upstream(upstream_fd))
       conn->state = WRITE_REQUEST;
     else {
-      conn->client_status = 500;
+      conn->status = 500;
       conn->state = WRITE_ERROR;
     }
     goto again;
 
   case WRITE_REQUEST:
-    add_to_epoll(conn, conn->upstream_fd, WRITE_FLAGS);
+    add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
     break;
 
   case READ_RESPONSE:
-    mod_in_epoll(conn, conn->upstream_fd, READ_FLAGS);
+    mod_in_epoll(conn, *upstream_fd, READ_FLAGS);
     break;
 
   case WRITE_RESPONSE:
-    mod_in_epoll(conn, conn->upstream_fd, WRITE_FLAGS);
+    mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
     break;
 
   case CLOSE_CONN:
     // TODO: free resources
-    if (conn->client_fd != -1)
-      del_from_epoll(conn->client_fd);
+    if (*client_fd != -1)
+      del_from_epoll(*client_fd);
 
-    if (conn->upstream_fd != -1)
-      del_from_epoll(conn->upstream_fd);
+    if (*upstream_fd != -1)
+      del_from_epoll(*upstream_fd);
 
     free_conn(&conn);
     puts("freed");

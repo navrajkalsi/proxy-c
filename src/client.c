@@ -186,8 +186,8 @@ bool verify_read(Connection *conn) {
   headers_end += TRAILER_STR.len; // now past the last \n
   size_t headers_size = headers_end - client->buffer;
 
-  client->buf_segment.data = client->buffer;
-  client->buf_segment.len = headers_size;
+  client->buf_view.data = client->buffer;
+  client->buf_view.len = headers_size;
 
   // tmp null termination for get_header_value(), so I do not get to the next
   // request or search for the header in the body (if read)
@@ -296,7 +296,7 @@ bool find_last_chunk(Connection *conn) {
   assert(client->headers_found);
 
   // pointer at chars after headers
-  char *start = client->buffer + client->buf_segment.len;
+  char *start = client->buffer + client->buf_view.len;
 
   if (*start == '\0') // no body
     return false;
@@ -344,7 +344,7 @@ bool find_last_chunk(Connection *conn) {
 
   // full last chunk not found, check last bytes in the buffer for worst case:
   // '0\r\n\r'
-  start = client->buffer + client->buf_segment.len;
+  start = client->buffer + client->buf_view.len;
   size_t read_size = strlen(start), // num of chars available to check at most
       to_match = read_size < (size_t)LAST_CHUNK_STR.len - 1
                      ? read_size
@@ -375,7 +375,7 @@ bool verify_request(Connection *conn) {
   assert(conn->state == VERIFY_REQUEST);
 
   Endpoint *client = &conn->client;
-  Str headers = client->buf_segment;
+  Str headers = client->buf_view;
   Cut c = cut(headers, ' ');
 
   // verifying method
@@ -394,7 +394,7 @@ bool verify_request(Connection *conn) {
     conn->status = 400;
     return err("validate_path", "Invalid request");
   }
-  client->http.path = c.head;
+  conn->path = c.head;
 
   // finding http version
   c = cut(c.tail, '\r');
@@ -406,21 +406,21 @@ bool verify_request(Connection *conn) {
     conn->status = 500;
     return err("validate_http", "Invalid HTTP version");
   }
-  client->http.version = c.head;
+  conn->http_ver = c.head;
 
   // finding the host header
-  if (!get_header_value(c.tail.data, "Host", &client->http.host)) {
+  if (!get_header_value(c.tail.data, "Host", &conn->host)) {
     conn->status = 400;
     return err("get_header_value", "Host header not found");
   }
 
-  if (!validate_host(&client->http.host)) {
+  if (!validate_host(&conn->host)) {
     conn->status = 301;
     return err("validate_host", "Different host in the request header");
   }
 
   // respecting client connection, in case of no error
-  set_connection(conn);
+  set_connection(conn->client.buffer, conn);
   conn->status = 200;
 
   return true;

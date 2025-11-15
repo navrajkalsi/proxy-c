@@ -31,11 +31,10 @@ Connection *init_conn(void) {
       READ_REQUEST; // remember to assign as ACCEPT_CLIENT, incase of proxy_fd
 
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
-  HTTP *client_http = &client->http, *upstream_http = &upstream->http;
 
   // same vars across client and upstream
   client->fd = upstream->fd = -1;
-  client->buf_segment.len = upstream->buf_segment.len = 0;
+  client->buf_view.len = upstream->buf_view.len = 0;
   client->read_index = upstream->read_index = 0;
   client->to_read = upstream->to_read = BUFFER_SIZE - 1;
   client->to_write = upstream->to_write = 0;
@@ -43,20 +42,21 @@ Connection *init_conn(void) {
   client->chunked = upstream->chunked = false;
   client->headers_found = upstream->headers_found = false;
   *client->last_chunk_found = *upstream->last_chunk_found = '\0';
-  client_http->version = upstream_http->version = STR(FALLBACK_HTTP_VER);
-  client_http->connection = upstream_http->connection = ERR_STR;
-  client_http->host = upstream_http->host = ERR_STR;
-  client_http->path = upstream_http->path = ERR_STR;
 
   // client
-  client->buf_segment.data =
+  client->buf_view.data =
       client->buffer; // initally request points to beginning of the buffer
 
   // upstream
-  upstream->buf_segment.data = upstream->buffer;
+  upstream->buf_view.data = upstream->buffer;
 
-  conn->proxy_fd = -1;
+  // conn
   conn->status = 0;
+  conn->proxy_fd = -1;
+  conn->http_ver = STR(FALLBACK_HTTP_VER);
+  conn->connection = ERR_STR;
+  conn->host = ERR_STR;
+  conn->path = ERR_STR;
 
   return conn;
 }

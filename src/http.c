@@ -114,22 +114,20 @@ bool set_date_string(char *date) {
                         &tm);
 }
 
-void set_connection(Endpoint *endpoint) {
-  if (!endpoint)
+void set_connection(const char *buffer, Connection *conn) {
+  if (!buffer || !conn)
     return;
 
-  HTTP *http = &endpoint->http;
-
-  if (get_header_value(endpoint->buffer, "Connection", &http->connection))
+  if (get_header_value(buffer, "Connection", &conn->connection))
     return;
   else
     warn("get_header_value", "Connection header not found");
 
-  if (equals(http->version, STR("HTTP/1.0")) ||
-      equals(http->version, STR("HTTP/0.9")))
-    http->connection = STR("close");
+  if (equals(conn->http_ver, STR("HTTP/1.0")) ||
+      equals(conn->http_ver, STR("HTTP/0.9")))
+    conn->connection = STR("close");
   else
-    http->connection = STR("keep-alive");
+    conn->connection = STR("keep-alive");
 }
 
 void print_request(const Connection *conn) {
@@ -137,7 +135,7 @@ void print_request(const Connection *conn) {
     return;
 
   // just request line
-  char *request_line = conn->client.buf_segment.data;
+  char *request_line = conn->client.buf_view.data;
   if (!request_line)
     return;
 

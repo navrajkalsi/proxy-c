@@ -126,14 +126,17 @@ bool write_request(Connection *conn) {
 
   assert(conn->state == WRITE_REQUEST);
 
-  conn->to_write = conn->client_headers.len - conn->write_index;
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
+
+  // writing request headers from client buffer to upstream
+  upstream->to_write = client->buf_view.len - upstream->write_index;
   ssize_t write_status = 0;
 
-  while ((conn->to_write -= write_status) &&
+  while ((upstream->to_write -= write_status) &&
          (write_status =
-              write(conn->client_fd, conn->upstream_buffer + conn->write_index,
-                    conn->to_write)) > 0)
-    conn->write_index += write_status;
+              write(upstream->fd, client->buffer + upstream->write_index,
+                    upstream->to_write)) > 0)
+    upstream->write_index += write_status;
 
   if (!write_status)
     return err("write", "No write status");
@@ -147,6 +150,5 @@ bool write_request(Connection *conn) {
       return err("write", strerror(errno));
   }
 
-  return true;
   return true;
 }

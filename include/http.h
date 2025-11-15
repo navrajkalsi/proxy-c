@@ -4,13 +4,6 @@
 
 #include "connection.h"
 
-typedef struct http {
-  Str version;
-  Str connection;
-  Str host;
-  Str path;
-} HTTP;
-
 // takes in the value of host header and also compares it to the upstream
 bool validate_host(const Str *header);
 
@@ -31,8 +24,9 @@ bool set_date_str(Str *date);
 // this function does not malloc!
 bool set_date_string(char *date);
 
-// finds connection header and respects its value
-void set_connection(Endpoint *endpoint);
+// finds connection header in buffer (can be client's or upstream's)
+// and respects its value
+void set_connection(const char *buffer, Connection *conn);
 
 // for logging request to stdout
 void print_request(const Connection *conn);
