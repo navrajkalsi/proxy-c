@@ -113,23 +113,21 @@ bool set_date_string(char *date) {
                         &tm);
 }
 
-bool set_connection(Connection *conn) {
+void set_connection(Connection *conn) {
   if (!conn)
-    return set_efault();
+    return;
 
   if (get_header_value(conn->client_headers.data, "Connection",
                        &conn->connection))
-    return true;
+    return;
   else
-    err("get_header_value", "Connection header not found");
+    warn("get_header_value", "Connection header not found");
 
   if (equals(conn->http_ver, STR("HTTP/1.0")) ||
       equals(conn->http_ver, STR("HTTP/0.9")))
     conn->connection = STR("close");
   else
     conn->connection = STR("keep-alive");
-
-  return true;
 }
 
 void print_request(const Connection *conn) {

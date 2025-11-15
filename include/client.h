@@ -40,7 +40,7 @@ bool find_last_chunk_partial(Connection *conn, ptrdiff_t index);
 bool verify_request(Connection *conn);
 
 // sending the error status code to client, in case of error during read()
-bool handle_error_response(Connection *conn);
+void handle_error_response(Connection *conn);
 
 bool generate_error_response(Connection *conn);
 

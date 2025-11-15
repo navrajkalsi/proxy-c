@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "client.h"
+#include "event.h"
 #include "http.h"
 #include "main.h"
 #include "utils.h"
@@ -448,10 +449,10 @@ bool verify_request(Connection *conn) {
 
   if (!c.found) {
     conn->client_status = 400;
-    return err("validate_http_ver", "Invalid request");
+    return err("validate_http", "Invalid request");
   } else if (!validate_http(c.head)) {
     conn->client_status = 500;
-    return err("validate_http_ver", "Invalid HTTP version");
+    return err("validate_http", "Invalid HTTP version");
   }
   conn->http_ver = c.head;
 
@@ -466,27 +467,34 @@ bool verify_request(Connection *conn) {
     return err("validate_host", "Different host in the request header");
   }
 
+  // respecting client connection, in case of no error
+  set_connection(conn);
   conn->client_status = 200;
 
   return true;
 }
 
-bool handle_error_response(Connection *conn) {
+void handle_error_response(Connection *conn) {
   if (!conn)
-    return set_efault();
+    return;
 
   assert(conn->state == WRITE_ERROR);
   assert(conn->client_status && conn->client_status >= 300);
 
   // using upstream buffer as client buffer may contain another request, but
   // upstream buffer will be empty
-  if (!generate_error_response(conn))
-    return err("generate_error_response", NULL);
+  if (!generate_error_response(conn)) {
+    err("generate_error_response", NULL);
+    char temp_error[] = "500 Internal Server Error";
+    memcpy(conn->upstream_buffer, temp_error, sizeof temp_error);
+  }
 
   if (!write_error_response(conn))
-    return err("write_error_response", NULL);
+    err("write_error_response", NULL);
 
-  return true;
+  // close connection header sent
+  // for errors
+  conn->state = CLOSE_CONN;
 }
 
 bool generate_error_response(Connection *conn) {
@@ -535,9 +543,7 @@ bool generate_error_response(Connection *conn) {
                 STR("\r\nContent-Type: text/html\r\nContent-Length: "),
                 content_length,
                 STR("\r\nConnection: "),
-                conn->client_status >= 400
-                    ? STR("keep-alive")
-                    : STR("close"), // close for redirections
+                STR("close"), // close for errors
                 conn->client_status < 400
                     ? STR("\r\nLocation: ")
                     : ERR_STR, // location only for redirections

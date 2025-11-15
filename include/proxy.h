@@ -19,22 +19,11 @@ bool setup_proxy(Config *config, int *proxy_fd);
 // sets up epoll() and sets the global var EPOLL_FD for new epoll instance
 bool setup_epoll(int proxy_fd);
 
-// fills upstream_addrinfo by calling getaddrinfo() on the upstream
-// and selects the port matching the following, in order:
-// if specified in the upstream with a ':'
-// if an http protocol is specified int the beginning
-// else fallbacks to FALLBACK_UPSTREAM_PORT
-bool setup_upstream(char *upstream);
-
-// prepares a new socket for upstream, connects to it points upstream_fd to the
-// new socket fd
-bool connect_upstream(int *upstream_fd);
-
 bool start_proxy(void);
 
 // mods state of the connection
 void handle_state(Connection *conn);
 
-void free_upstream_addrinfo(void);
-
 void free_active_conns(void);
+
+void log_state(int state);

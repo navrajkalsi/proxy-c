@@ -4,9 +4,6 @@
 
 #include "connection.h"
 
-// sets required status codes
-bool validate_request(Connection *conn);
-
 // takes in the value of host header and also compares it to the upstream
 bool validate_host(const Str *header);
 
@@ -28,7 +25,7 @@ bool set_date_str(Str *date);
 bool set_date_string(char *date);
 
 // finds connection header and respects its value
-bool set_connection(Connection *conn);
+void set_connection(Connection *conn);
 
 // for logging request to stdout
 void print_request(const Connection *conn);

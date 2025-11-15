@@ -9,6 +9,7 @@
 
 #include "args.h"
 #include "proxy.h"
+#include "upstream.h"
 #include "utils.h"
 
 bool RUNNING = true;

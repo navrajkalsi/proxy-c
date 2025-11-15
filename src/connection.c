@@ -28,7 +28,7 @@ Connection *init_conn(void) {
   memset(&conn->client_addr, 0, sizeof(struct sockaddr_storage));
 
   conn->state =
-      READ_REQUEST; // remember to assign as ACCEPT_CONN, incase of proxy_fd
+      READ_REQUEST; // remember to assign as ACCEPT_CLIENT, incase of proxy_fd
 
   // client
   conn->client_fd = -1;
@@ -116,7 +116,7 @@ bool add_to_epoll(Connection *conn, int fd, int flags) {
                "accepting/connecting");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, fd, &epoll_event) == -1)
-    return err("epoll_ctl", strerror(errno));
+    return err("epoll_ctl_add", strerror(errno));
 
   return true;
 }
@@ -128,7 +128,7 @@ bool mod_in_epoll(Connection *conn, int fd, int flags) {
     return err("get_target_fd", "Socket fd is not initialized, logic error");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, fd, &epoll_event) == -1)
-    return err("epoll_ctl", strerror(errno));
+    return err("epoll_ctl_mod", strerror(errno));
 
   return true;
 }
@@ -138,7 +138,7 @@ bool del_from_epoll(int fd) {
     return err("get_target_fd", "Socket fd is not initialized");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL) == -1)
-    return err("epoll_ctl", strerror(errno));
+    return err("epoll_ctl_del", strerror(errno));
 
   return true;
 }

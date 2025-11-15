@@ -9,13 +9,14 @@
 #include "utils.h"
 
 typedef enum {
-  ACCEPT_CONN, // only if proxy_fd is set
+  ACCEPT_CLIENT, // only if proxy_fd is set
   READ_REQUEST,
   VERIFY_REQUEST,
   WRITE_ERROR,
-  WRITE_RESPONSE,
-  READ_RESPONSE,
+  CONNECT_UPSTREAM,
   WRITE_REQUEST,
+  READ_RESPONSE,
+  WRITE_RESPONSE,
   CLOSE_CONN
 } State;
 
