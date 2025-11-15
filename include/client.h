@@ -24,17 +24,6 @@ bool pull_buf(Connection *conn);
 // returns true if chunk is received in full, or false if need to read more
 bool find_last_chunk(Connection *conn);
 
-// searches for full last chunk from index upto null terminator
-// returns true if all of last chunk is found and also sets next_index, if
-// requried
-bool find_last_chunk_full(Connection *conn, ptrdiff_t index);
-
-// searches for remaining chars or starting of last chunk from index upto null
-// terminator
-// returns true if last_chunk is complete, else returns false also sets
-// next_index, if requried
-bool find_last_chunk_partial(Connection *conn, ptrdiff_t index);
-
 // Proxy side request verification
 // host header verification
 bool verify_request(Connection *conn);

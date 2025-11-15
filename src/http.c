@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "connection.h"
 #include "http.h"
 #include "main.h"
 #include "utils.h"
@@ -113,21 +114,22 @@ bool set_date_string(char *date) {
                         &tm);
 }
 
-void set_connection(Connection *conn) {
-  if (!conn)
+void set_connection(Endpoint *endpoint) {
+  if (!endpoint)
     return;
 
-  if (get_header_value(conn->client_headers.data, "Connection",
-                       &conn->connection))
+  HTTP *http = &endpoint->http;
+
+  if (get_header_value(endpoint->buffer, "Connection", &http->connection))
     return;
   else
     warn("get_header_value", "Connection header not found");
 
-  if (equals(conn->http_ver, STR("HTTP/1.0")) ||
-      equals(conn->http_ver, STR("HTTP/0.9")))
-    conn->connection = STR("close");
+  if (equals(http->version, STR("HTTP/1.0")) ||
+      equals(http->version, STR("HTTP/0.9")))
+    http->connection = STR("close");
   else
-    conn->connection = STR("keep-alive");
+    http->connection = STR("keep-alive");
 }
 
 void print_request(const Connection *conn) {
@@ -135,7 +137,7 @@ void print_request(const Connection *conn) {
     return;
 
   // just request line
-  char *request_line = conn->client_headers.data;
+  char *request_line = conn->client.buf_segment.data;
   if (!request_line)
     return;
 
@@ -156,6 +158,8 @@ void print_request(const Connection *conn) {
   // host
   str_print(&conn->host);
   putchar('\n');
+
+  // verify if http struct is really needed
 }
 
 char *get_status_string(int status_code) {

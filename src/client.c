@@ -16,7 +16,7 @@
 #include <unistd.h>
 
 #include "client.h"
-#include "event.h"
+#include "connection.h"
 #include "http.h"
 #include "main.h"
 #include "utils.h"
@@ -33,7 +33,7 @@ void accept_client(int proxy_fd) {
 
     socklen_t addr_len = sizeof conn->client_addr;
 
-    if ((conn->client_fd =
+    if ((conn->client.fd =
              accept(proxy_fd, (struct sockaddr *)&conn->client_addr,
                     &addr_len)) == -1) {
 
@@ -54,13 +54,13 @@ void accept_client(int proxy_fd) {
 
     // TODO: think what if the client does not make a request forever
 
-    if (!set_non_block(conn->client_fd)) {
+    if (!set_non_block(conn->client.fd)) {
       free_conn(&conn);
       err("set_non_block", NULL);
       continue;
     }
 
-    if (!add_to_epoll(conn, conn->client_fd, READ_FLAGS)) {
+    if (!add_to_epoll(conn, conn->client.fd, READ_FLAGS)) {
       free_conn(&conn);
       err("add_to_epoll", NULL);
       continue;
@@ -77,8 +77,10 @@ void read_client(Connection *conn) {
 
   assert(conn->state == READ_REQUEST);
 
+  Endpoint *client = &conn->client;
+
   // in case continuing to read after dealing with previous request
-  if (conn->next_index)
+  if (client->next_index)
     if (!pull_buf(conn)) {
       err("pull_buf", strerror(errno));
       goto error;
@@ -87,22 +89,22 @@ void read_client(Connection *conn) {
   ssize_t read_status = 0;
 
   // new request should always start from the beginning of the buffer
-  while (conn->to_read &&
-         (read_status =
-              read(conn->client_fd, conn->client_buffer + conn->read_index,
-                   conn->to_read)) > 0) {
+  while (client->to_read &&
+         (read_status = read(client->fd, client->buffer + client->read_index,
+                             client->to_read)) > 0) {
 
-    conn->client_buffer[conn->read_index + read_status] = '\0';
-    puts(conn->client_buffer);
+    client->buffer[client->read_index + read_status] = '\0';
+    puts(client->buffer);
 
     // if chunked then reject the body
     // else read upto to_read (which is maybe set by content len if headers were
     // found)
-    conn->to_read = conn->chunked ? (size_t)(BUFFER_SIZE - conn->read_index - 1)
-                                  : conn->to_read - read_status;
+    client->to_read = client->chunked
+                          ? (size_t)(BUFFER_SIZE - client->read_index - 1)
+                          : client->to_read - read_status;
 
-    if (!conn->headers_found) {
-      conn->read_index += read_status;
+    if (!client->headers_found) {
+      client->read_index += read_status;
       if (!verify_read(
               conn)) { // error response status set, send error response
         conn->state = WRITE_ERROR;
@@ -110,16 +112,16 @@ void read_client(Connection *conn) {
       }
 
       // no content len or encoding was specified
-      if (conn->headers_found && !conn->to_read &&
-          !conn->chunked) { // request complete, now verify it
+      if (client->headers_found && !client->to_read &&
+          !client->chunked) { // request complete, now verify it
         conn->state = VERIFY_REQUEST;
         break;
       }
       continue;
     }
 
-    if (conn->chunked) { // checking for last chunk, was not received during
-                         // verify_read()
+    if (client->chunked) { // checking for last chunk, was not received during
+                           // verify_read()
 
       // remember, here read_index will be the index of headers_end (one byte
       // after last \n)
@@ -131,7 +133,7 @@ void read_client(Connection *conn) {
       }
     }
 
-    if (!conn->to_read) // done reading body, set from content-len
+    if (!client->to_read) // done reading body, set from content-len
       conn->state = VERIFY_REQUEST;
   }
 
@@ -156,7 +158,7 @@ void read_client(Connection *conn) {
 
 error:
   conn->state = WRITE_ERROR;
-  conn->client_status = 500;
+  conn->status = 500;
   return;
 }
 
@@ -164,40 +166,42 @@ bool verify_read(Connection *conn) {
   if (!conn)
     return set_efault();
 
+  Endpoint *client = &conn->client;
+
   // this function will determine if the request is compelete (got the headers
   // or not), and should not be used after the headers are read
-  assert(!conn->headers_found);
-  assert(conn->client_buffer[conn->read_index] == '\0');
+  assert(!client->headers_found);
+  assert(client->buffer[client->read_index] == '\0');
 
   char *headers_end = NULL;
-  if (!(headers_end = strstr(conn->client_buffer, TRAILER))) {
-    if (conn->read_index >= BUFFER_SIZE - 1) { // no space left
-      conn->client_status = 431;
+  if (!(headers_end = strstr(client->buffer, TRAILER))) {
+    if (client->read_index >= BUFFER_SIZE - 1) { // no space left
+      conn->status = 431;
       return err("strstr", "Headers too large");
     }
     return true; // read more
   } else
-    conn->headers_found = true;
+    client->headers_found = true;
 
   headers_end += TRAILER_STR.len; // now past the last \n
-  size_t headers_size = headers_end - conn->client_buffer;
+  size_t headers_size = headers_end - client->buffer;
 
-  conn->client_headers.data = conn->client_buffer;
-  conn->client_headers.len = headers_size;
+  client->buf_segment.data = client->buffer;
+  client->buf_segment.len = headers_size;
 
   // tmp null termination for get_header_value(), so I do not get to the next
   // request or search for the header in the body (if read)
-  char org_char = conn->client_buffer[headers_size];
-  conn->client_buffer[headers_size] = '\0';
+  char org_char = client->buffer[headers_size];
+  client->buffer[headers_size] = '\0';
 
   Str misc = ERR_STR; // misc str to contain the header value
-  if (get_header_value(conn->client_buffer, "Content-Length", &misc)) {
-    conn->client_buffer[headers_size] = org_char;
+  if (get_header_value(client->buffer, "Content-Length", &misc)) {
+    client->buffer[headers_size] = org_char;
     Str *content_len_str = &misc;
 
     for (int i = 0; i < content_len_str->len; i++)
       if (!isdigit(content_len_str->data[i])) {
-        conn->client_status = 400;
+        conn->status = 400;
         return err("isdigit", "Invalid content-length header value");
       }
 
@@ -210,33 +214,32 @@ bool verify_read(Connection *conn) {
       goto read_complete;
 
     if (content_len > 10 * MB) {
-      conn->client_status = 413;
+      conn->status = 413;
       return err("verify_content_len", "Content too large");
     }
 
     size_t request_size = headers_size + content_len;
 
     if (request_size ==
-        (size_t)conn->read_index) // body read already, but nothing else
+        (size_t)client->read_index) // body read already, but nothing else
       goto read_complete;
 
     if (request_size <
-        (size_t)conn->read_index) { // body read and another request
-      conn->next_index =
+        (size_t)client->read_index) { // body read and another request
+      client->next_index =
           request_size + 1; // will be copied to the start for next read
       goto read_complete;
     }
 
-    conn->to_read = request_size - conn->read_index;
+    client->to_read = request_size - client->read_index;
     goto disregard_body;
 
-  } else if (get_header_value(conn->client_buffer, "Transfer-Encoding",
-                              &misc)) {
-    conn->client_buffer[headers_size] = org_char;
+  } else if (get_header_value(client->buffer, "Transfer-Encoding", &misc)) {
+    client->buffer[headers_size] = org_char;
     Str *transfer_encoding = &misc;
 
     if (!equals(*transfer_encoding, STR("chunked"))) {
-      conn->client_status = 411;
+      conn->status = 411;
       return err("verify_encoding", "Encoding method not supported");
     }
 
@@ -245,20 +248,20 @@ bool verify_read(Connection *conn) {
     if (find_last_chunk(conn))
       goto read_complete;
 
-    conn->chunked = true;
+    client->chunked = true;
     goto disregard_body;
 
   } else {
-    conn->client_buffer[headers_size] = org_char;
+    client->buffer[headers_size] = org_char;
     goto read_complete;
   }
 
 read_complete:
-  conn->to_read = 0;
+  client->to_read = 0;
   return true;
 
 disregard_body:
-  conn->read_index = headers_size;
+  client->read_index = headers_size;
   return true;
 }
 
@@ -266,18 +269,20 @@ bool pull_buf(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  if (!conn->next_index) // nothing to do, read new request
+  Endpoint *client = &conn->client;
+
+  if (!client->next_index) // nothing to do, read new request
     return true;
 
-  assert(conn->read_index > conn->next_index);
+  assert(client->read_index > client->next_index);
 
-  size_t to_copy = conn->read_index - conn->next_index;
-  memcpy(conn->client_buffer, conn->client_buffer + conn->next_index, to_copy);
-  conn->read_index = to_copy;
-  conn->to_read = BUFFER_SIZE - conn->read_index - 1;
-  conn->next_index = 0;
+  size_t to_copy = client->read_index - client->next_index;
+  memcpy(client->buffer, client->buffer + client->next_index, to_copy);
+  client->read_index = to_copy;
+  client->to_read = BUFFER_SIZE - client->read_index - 1;
+  client->next_index = 0;
 
-  conn->headers_found = false;
+  client->headers_found = false;
 
   return true;
 }
@@ -286,34 +291,36 @@ bool find_last_chunk(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  assert(conn->headers_found);
+  Endpoint *client = &conn->client;
+
+  assert(client->headers_found);
 
   // pointer at chars after headers
-  char *start = conn->client_buffer + conn->client_headers.len;
+  char *start = client->buffer + client->buf_segment.len;
 
   if (*start == '\0') // no body
     return false;
 
   // first checking if already reading last chunk from previous call
-  size_t matched = strlen(conn->last_chunk_found);
+  size_t matched = strlen(client->last_chunk_found);
 
   while (matched && matched < (size_t)LAST_CHUNK_STR.len &&
          *start) {                       // continue to check for last_chunk
     if (*start != LAST_CHUNK[matched]) { // mismatch
-      *conn->last_chunk_found = '\0';
+      *client->last_chunk_found = '\0';
       matched = 0;
       break;
     }
 
-    conn->last_chunk_found[matched] = LAST_CHUNK[matched];
-    conn->last_chunk_found[++matched] = '\0';
+    client->last_chunk_found[matched] = LAST_CHUNK[matched];
+    client->last_chunk_found[++matched] = '\0';
 
     start++;
   }
 
   if (matched == (size_t)LAST_CHUNK_STR.len) { // full chunk matched
     if (*start)                                // next request
-      conn->next_index = start - conn->client_buffer;
+      client->next_index = start - client->buffer;
     return true;
   } else if (matched) // full chunk not matched but ran out of chars
     return false;     // read more
@@ -326,10 +333,10 @@ bool find_last_chunk(Connection *conn) {
   char *last_chunk = LAST_CHUNK;
   if ((last_chunk = strstr(start, last_chunk))) { // last chunk was read
     ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
-                          conn->client_buffer; // this is past the \n
+                          client->buffer; // this is past the \n
 
-    if (conn->client_buffer[chunk_end]) // read the body and another request
-      conn->next_index = chunk_end;
+    if (client->buffer[chunk_end]) // read the body and another request
+      client->next_index = chunk_end;
 
     // read the body and nothing more
     return true;
@@ -337,7 +344,7 @@ bool find_last_chunk(Connection *conn) {
 
   // full last chunk not found, check last bytes in the buffer for worst case:
   // '0\r\n\r'
-  start = conn->client_buffer + conn->client_headers.len;
+  start = client->buffer + client->buf_segment.len;
   size_t read_size = strlen(start), // num of chars available to check at most
       to_match = read_size < (size_t)LAST_CHUNK_STR.len - 1
                      ? read_size
@@ -349,10 +356,10 @@ bool find_last_chunk(Connection *conn) {
   while (start[match_index]) {
     if (start[match_index] != LAST_CHUNK[matched]) {
       matched = 0;
-      *conn->last_chunk_found = '\0'; // restart
+      *client->last_chunk_found = '\0'; // restart
     } else {
-      conn->last_chunk_found[matched] = LAST_CHUNK[matched];
-      conn->last_chunk_found[++matched] = '\0';
+      client->last_chunk_found[matched] = LAST_CHUNK[matched];
+      client->last_chunk_found[++matched] = '\0';
     }
 
     match_index++;
@@ -361,77 +368,22 @@ bool find_last_chunk(Connection *conn) {
   return false;
 }
 
-bool find_last_chunk_full(Connection *conn, ptrdiff_t index) {
-  if (!conn)
-    return set_efault();
-
-  char *last_chunk = LAST_CHUNK;
-
-  if ((last_chunk = strstr(conn->client_buffer + index,
-                           last_chunk))) { // last chunk was read
-    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
-                          conn->client_buffer; // this is past the \n
-
-    if (conn->client_buffer[chunk_end] !=
-        '\0') // read the body and another request
-      conn->next_index = chunk_end;
-
-    // read the body and nothing more
-    return true;
-  }
-
-  return false;
-}
-
-bool find_last_chunk_partial(Connection *conn, ptrdiff_t index) {
-  if (!conn)
-    return set_efault();
-
-  // checking if 0 is received, only using last few bytes
-  // extreme case, received: "0\r\n\r"
-  while (conn->client_buffer[index] != '\0') {
-    size_t found =
-        strlen(conn->last_chunk_found); // chars already found for last chunk,
-                                        // will be zero in case starting new
-                                        // can change in this loop
-
-    printf("found: %zu\n", found);
-    if (found == (size_t)LAST_CHUNK_STR.len)
-      break;
-
-    if (conn->client_buffer[index] != LAST_CHUNK[found])
-      *conn->last_chunk_found = '\0'; // restart
-    else {
-      conn->last_chunk_found[found] = LAST_CHUNK[found];
-      conn->last_chunk_found[++found] = '\0';
-    }
-
-    index++;
-  }
-
-  if (strlen(conn->last_chunk_found) == (size_t)LAST_CHUNK_STR.len) {
-    if (conn->client_buffer[index] != '\0')
-      conn->next_index = index;
-    return true;
-  } else
-    return false;
-}
-
 bool verify_request(Connection *conn) {
   if (!conn)
     return set_efault();
 
   assert(conn->state == VERIFY_REQUEST);
 
-  Str headers = conn->client_headers;
+  Endpoint *client = &conn->client;
+  Str headers = client->buf_segment;
   Cut c = cut(headers, ' ');
 
   // verifying method
   if (!c.found) {
-    conn->client_status = 400;
+    conn->status = 400;
     return err("validate_method", "Invalid request");
   } else if (!validate_method(c.head)) {
-    conn->client_status = 405;
+    conn->status = 405;
     return err("validate_method", "Invalid method");
   }
 
@@ -439,37 +391,37 @@ bool verify_request(Connection *conn) {
   c = cut(c.tail, ' ');
 
   if (!c.found) {
-    conn->client_status = 400;
+    conn->status = 400;
     return err("validate_path", "Invalid request");
   }
-  conn->path = c.head;
+  client->http.path = c.head;
 
   // finding http version
   c = cut(c.tail, '\r');
 
   if (!c.found) {
-    conn->client_status = 400;
+    conn->status = 400;
     return err("validate_http", "Invalid request");
   } else if (!validate_http(c.head)) {
-    conn->client_status = 500;
+    conn->status = 500;
     return err("validate_http", "Invalid HTTP version");
   }
-  conn->http_ver = c.head;
+  client->http.version = c.head;
 
   // finding the host header
-  if (!get_header_value(c.tail.data, "Host", &conn->host)) {
-    conn->client_status = 400;
+  if (!get_header_value(c.tail.data, "Host", &client->http.host)) {
+    conn->status = 400;
     return err("get_header_value", "Host header not found");
   }
 
-  if (!validate_host(&conn->host)) {
-    conn->client_status = 301;
+  if (!validate_host(&client->http.host)) {
+    conn->status = 301;
     return err("validate_host", "Different host in the request header");
   }
 
   // respecting client connection, in case of no error
   set_connection(conn);
-  conn->client_status = 200;
+  conn->status = 200;
 
   return true;
 }
@@ -479,14 +431,14 @@ void handle_error_response(Connection *conn) {
     return;
 
   assert(conn->state == WRITE_ERROR);
-  assert(conn->client_status && conn->client_status >= 300);
+  assert(conn->status && conn->status >= 300);
 
   // using upstream buffer as client buffer may contain another request, but
   // upstream buffer will be empty
   if (!generate_error_response(conn)) {
     err("generate_error_response", NULL);
     char temp_error[] = "500 Internal Server Error";
-    memcpy(conn->upstream_buffer, temp_error, sizeof temp_error);
+    memcpy(conn->upstream.buffer, temp_error, sizeof temp_error);
   }
 
   if (!write_error_response(conn))
@@ -501,13 +453,15 @@ bool generate_error_response(Connection *conn) {
   if (!conn)
     return set_efault();
 
-  assert(conn->client_status >= 300);
+  assert(conn->status >= 300);
+
+  Endpoint *upstream = &conn->upstream;
 
   char date[DATE_LEN] = {0};
   if (!set_date_string(date))
     return err("set_date_string", NULL);
 
-  const Str err_str = get_status_str(conn->client_status),
+  const Str err_str = get_status_str(conn->status),
             date_str = {.data = date, .len = DATE_LEN - 1},
             response_body[] = {
                 STR("<html><head><title>"), err_str,
@@ -544,10 +498,9 @@ bool generate_error_response(Connection *conn) {
                 content_length,
                 STR("\r\nConnection: "),
                 STR("close"), // close for errors
-                conn->client_status < 400
-                    ? STR("\r\nLocation: ")
-                    : ERR_STR, // location only for redirections
-                conn->client_status < 400 ? location : ERR_STR,
+                conn->status < 400 ? STR("\r\nLocation: ")
+                                   : ERR_STR, // location only for redirections
+                conn->status < 400 ? location : ERR_STR,
                 STR("\r\n\r\n")};
 
   // collecting all response in upstream_buffer
@@ -561,17 +514,17 @@ bool generate_error_response(Connection *conn) {
   ptrdiff_t buf_ptr = 0;
 
   for (uint i = 0; i < header_elms; ++i) {
-    memcpy(conn->upstream_buffer + buf_ptr, response_headers[i].data,
+    memcpy(upstream->buffer + buf_ptr, response_headers[i].data,
            response_headers[i].len);
     buf_ptr += response_headers[i].len;
   }
   for (uint i = 0; i < body_elms; ++i) {
-    memcpy(conn->upstream_buffer + buf_ptr, response_body[i].data,
+    memcpy(upstream->buffer + buf_ptr, response_body[i].data,
            response_body[i].len);
     buf_ptr += response_body[i].len;
   }
-  conn->upstream_buffer[buf_ptr] = '\0';
-  conn->to_write = (size_t)buf_ptr;
+  upstream->buffer[buf_ptr] = '\0';
+  upstream->to_write = (size_t)buf_ptr;
 
   return true;
 }
@@ -580,13 +533,15 @@ bool write_error_response(Connection *conn) {
   if (!conn)
     return set_efault();
 
+  Endpoint *upstream = &conn->upstream;
+
   ssize_t write_status = 0;
 
-  while ((conn->to_write -= write_status) &&
+  while ((upstream->to_write -= write_status) &&
          (write_status =
-              write(conn->client_fd, conn->upstream_buffer + conn->write_index,
-                    conn->to_write)) > 0)
-    conn->write_index += write_status;
+              write(conn->client.fd, upstream->buffer + upstream->write_index,
+                    upstream->to_write)) > 0)
+    upstream->write_index += write_status;
 
   if (!write_status)
     return err("write", "No write status");
@@ -610,7 +565,7 @@ bool write_str(const Connection *conn, const Str *str) {
   ptrdiff_t current = 0;
 
   while (str->len && current < str->len) {
-    long wrote = write(conn->client_fd, str->data + current,
+    long wrote = write(conn->client.fd, str->data + current,
                        (size_t)(str->len - current));
     if (wrote < 0)
       return err("write", strerror(errno));
