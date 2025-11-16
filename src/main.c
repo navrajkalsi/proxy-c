@@ -56,8 +56,9 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
+  free_upstream_addrinfo();
   free_active_conns();
-
+  free_config(&config);
   regfree(&origin_regex);
 
   return 0;

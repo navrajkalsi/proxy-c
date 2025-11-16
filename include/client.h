@@ -14,16 +14,6 @@ void read_client(Connection *conn);
 // whether to read more and how much to read more
 bool verify_read(Connection *conn);
 
-// copies bytes from next_index to starting of buffer till read_index
-// & sets read index accordingly
-bool pull_buf(Connection *conn);
-
-// dynamically checks for last_chunk (fragmented or full) depending on the
-// chars in conn.last_chunk_found
-// starts to check from end of headers in client_buffer
-// returns true if chunk is received in full, or false if need to read more
-bool find_last_chunk(Connection *conn);
-
 // Proxy side request verification
 // host header verification
 bool verify_request(Connection *conn);

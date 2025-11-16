@@ -17,4 +17,7 @@ bool connect_upstream(int *upstream_fd);
 void free_upstream_addrinfo(void);
 
 // writing client request to upstream
-bool write_request(Connection *conn);
+void write_request(Connection *conn);
+
+// reading response from upstream
+void read_response(Connection *conn);

@@ -35,8 +35,8 @@ bool validate_host(const Str *header) {
   // last '/' is optional
   size_t to_compare = *--org_ptr == '/' ? header->len - 1 : header->len;
 
-  if (strlen(config.upstream) < to_compare ||
-      memcmp(header->data, config.upstream, to_compare) != 0)
+  if (strlen(config.canonical_host) < to_compare ||
+      memcmp(header->data, config.canonical_host, to_compare) != 0)
     return false;
 
   return true;

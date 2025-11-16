@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -304,4 +305,103 @@ bool exec_regex(const regex_t *regex, const char *match) {
   }
 
   return true;
+}
+
+bool pull_buf(Endpoint *endpoint) {
+  if (!endpoint)
+    return set_efault();
+
+  if (!endpoint->next_index) // nothing to do, read new request
+    return true;
+
+  assert(endpoint->read_index > endpoint->next_index);
+
+  size_t to_copy = endpoint->read_index - endpoint->next_index;
+  memcpy(endpoint->buffer, endpoint->buffer + endpoint->next_index, to_copy);
+  endpoint->read_index = to_copy;
+  endpoint->to_read = BUFFER_SIZE - endpoint->read_index - 1;
+  endpoint->next_index = 0;
+
+  endpoint->headers_found = false;
+
+  return true;
+}
+
+bool find_last_chunk(Endpoint *endpoint) {
+  if (!endpoint)
+    return set_efault();
+
+  assert(endpoint->headers_found);
+
+  // pointer at chars after headers
+  char *start = endpoint->buffer + endpoint->buf_view.len;
+
+  if (*start == '\0') // no body
+    return false;
+
+  // first checking if already reading last chunk from previous call
+  size_t matched = strlen(endpoint->last_chunk_found);
+
+  while (matched && matched < (size_t)LAST_CHUNK_STR.len &&
+         *start) {                       // continue to check for last_chunk
+    if (*start != LAST_CHUNK[matched]) { // mismatch
+      *endpoint->last_chunk_found = '\0';
+      matched = 0;
+      break;
+    }
+
+    endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
+    endpoint->last_chunk_found[++matched] = '\0';
+
+    start++;
+  }
+
+  if (matched == (size_t)LAST_CHUNK_STR.len) { // full chunk matched
+    if (*start)                                // next request
+      endpoint->next_index = start - endpoint->buffer;
+    return true;
+  } else if (matched) // full chunk not matched but ran out of chars
+    return false;     // read more
+
+  // nothing more to compare
+  if (!*start)
+    return false;
+
+  // last chunk not found in the beginning
+  char *last_chunk = LAST_CHUNK;
+  if ((last_chunk = strstr(start, last_chunk))) { // last chunk was read
+    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
+                          endpoint->buffer; // this is past the \n
+
+    if (endpoint->buffer[chunk_end]) // read the body and another request
+      endpoint->next_index = chunk_end;
+
+    // read the body and nothing more
+    return true;
+  }
+
+  // full last chunk not found, check last bytes in the buffer for worst case:
+  // '0\r\n\r'
+  start = endpoint->buffer + endpoint->buf_view.len;
+  size_t read_size = strlen(start), // num of chars available to check at most
+      to_match = read_size < (size_t)LAST_CHUNK_STR.len - 1
+                     ? read_size
+                     : (size_t)LAST_CHUNK_STR.len - 1;
+  ptrdiff_t match_index = read_size - to_match;
+  matched = 0;
+
+  // checking if 0 is received, only using last to_match bytes
+  while (start[match_index]) {
+    if (start[match_index] != LAST_CHUNK[matched]) {
+      matched = 0;
+      *endpoint->last_chunk_found = '\0'; // restart
+    } else {
+      endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
+      endpoint->last_chunk_found[++matched] = '\0';
+    }
+
+    match_index++;
+  }
+
+  return false;
 }

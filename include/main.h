@@ -11,8 +11,11 @@
 #ifndef DEFAULT_PORT
 #define DEFAULT_PORT "1419"
 #endif
-#ifndef DEFAULT_UPSTREAM
-#define DEFAULT_UPSTREAM "https://domain.com"
+#ifndef DEFAULT_CANONICAL_HOST // host header to look for in requests
+#define DEFAULT_CANONICAL_HOST "https://domain.com"
+#endif
+#ifndef DEFAULT_UPSTREAM // server to contact, can be same as host
+#define DEFAULT_UPSTREAM "localhost:8080"
 #endif
 #ifndef ORIGIN_REGEX
 #define ORIGIN_REGEX                                                           \

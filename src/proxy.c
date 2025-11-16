@@ -37,9 +37,7 @@ bool setup_proxy(Config *config, int *proxy_fd) {
 
   errno = 0;
 
-  current = out;
-
-  do {
+  for (current = out; current; current = current->ai_next) {
     if ((*proxy_fd = socket(current->ai_family, current->ai_socktype,
                             current->ai_protocol)) == -1)
       continue;
@@ -47,42 +45,43 @@ bool setup_proxy(Config *config, int *proxy_fd) {
     // Have to setsocketopt to allow dual-stack setup supporting both IPv4 & v6
     if (setsockopt(*proxy_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
                    sizeof(int)) == -1) {
+      close(*proxy_fd);
       *proxy_fd = -2; // setsockopt errors
-      goto close;
+      continue;
     }
 
     if (setsockopt(*proxy_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1},
                    sizeof(int)) == -1) {
+      close(*proxy_fd);
       *proxy_fd = -2;
-      goto close;
+      continue;
     }
 
     // Adding timeouts for read and write
     struct timeval time = {.tv_sec = 5, .tv_usec = 0};
     if (setsockopt(*proxy_fd, SOL_SOCKET, SO_RCVTIMEO, &time, sizeof time) ==
         -1) {
+      close(*proxy_fd);
       *proxy_fd = -2;
-      goto close;
+      continue;
     }
 
     if (setsockopt(*proxy_fd, SOL_SOCKET, SO_SNDTIMEO, &time, sizeof time) ==
         -1) {
+      close(*proxy_fd);
       *proxy_fd = -2;
-      goto close;
+      continue;
     }
 
     if (bind(*proxy_fd, current->ai_addr, current->ai_addrlen) == -1) {
+      close(*proxy_fd);
       *proxy_fd = -3;
-      goto close;
+      continue;
     }
 
     // If a valid socket is binded to then break, else set proxy_fd to -1
     break;
-
-  close:
-    close(*proxy_fd);
-    continue;
-  } while ((current = current->ai_next));
+  };
 
   freeaddrinfo(out);
   // dealing with different errors
@@ -160,11 +159,10 @@ bool start_proxy(void) {
       else if (conn->state == WRITE_ERROR &&
                events & EPOLLOUT) // error during read, do not contact upstream
         handle_error_response(conn);
-      // TODO: timeout
 
       else if (conn->state == WRITE_REQUEST &&
                events & EPOLLOUT) // send to upstream
-        puts("Ready to send to upstream");
+        write_request(conn);
 
       else if (conn->state == READ_RESPONSE &&
                events & EPOLLIN) // read from upstream
@@ -184,16 +182,10 @@ bool start_proxy(void) {
         puts("Unknown state");
 
       handle_state(conn);
-      puts("after");
-      log_state(conn->state);
-      puts("");
     }
   }
 
   puts("\nShutting Down...");
-  free_upstream_addrinfo();
-  free_active_conns();
-
   return true;
 }
 
@@ -231,16 +223,17 @@ again:
     break;
 
   case CONNECT_UPSTREAM:
-    if (connect_upstream(upstream_fd))
+    if (connect_upstream(upstream_fd)) {
       conn->state = WRITE_REQUEST;
-    else {
+      add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    } else {
       conn->status = 500;
       conn->state = WRITE_ERROR;
     }
     goto again;
 
   case WRITE_REQUEST:
-    add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
     break;
 
   case READ_RESPONSE:
@@ -253,14 +246,13 @@ again:
 
   case CLOSE_CONN:
     // TODO: free resources
-    if (*client_fd != -1)
+    if (*client_fd >= 0)
       del_from_epoll(*client_fd);
 
-    if (*upstream_fd != -1)
+    if (*upstream_fd >= 0)
       del_from_epoll(*upstream_fd);
 
     free_conn(&conn);
-    puts("freed");
     break;
 
   default:

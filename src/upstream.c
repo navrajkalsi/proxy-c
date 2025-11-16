@@ -1,7 +1,11 @@
+#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -50,7 +54,7 @@ bool setup_upstream(char *upstream) {
 
   struct addrinfo hints;
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_INET6;
+  hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
   int status = 0;
@@ -69,43 +73,30 @@ bool setup_upstream(char *upstream) {
 }
 
 bool connect_upstream(int *upstream_fd) {
-  struct addrinfo *current = upstream_addrinfo;
-  if (!current)
+  if (!upstream_addrinfo)
     return err("verify_upstream", "Upstream address info is NULL");
 
-  do {
+  for (struct addrinfo *current = upstream_addrinfo; current;
+       current = current->ai_next) {
     if ((*upstream_fd = socket(current->ai_family, current->ai_socktype,
                                current->ai_protocol)) == -1)
       continue;
 
-    // Have to setsocketopt to allow dual-stack setup supporting both IPv4 &
-    // v6
-    if (setsockopt(*upstream_fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){0},
-                   sizeof(int)) == -1) {
-      *upstream_fd = -2;
-      goto close;
-    }
-
     if (connect(*upstream_fd, current->ai_addr, current->ai_addrlen) == -1) {
-      *upstream_fd = -3;
-      goto close;
+      close(*upstream_fd);
+      *upstream_fd = -2;
+      continue;
     }
 
     // If a valid socket is connected to then break
     break;
-
-  close:
-    close(*upstream_fd);
-    continue;
-  } while ((current = current->ai_next));
+  };
 
   // dealing with different errors
   if (*upstream_fd < 0) {
     if (*upstream_fd == -1)
       return err("socket", strerror(errno));
     else if (*upstream_fd == -2)
-      return err("setsockopt", strerror(errno));
-    else if (*upstream_fd == -3)
       return err("connect", strerror(errno));
   }
 
@@ -120,9 +111,9 @@ void free_upstream_addrinfo(void) {
     freeaddrinfo(upstream_addrinfo);
 }
 
-bool write_request(Connection *conn) {
+void write_request(Connection *conn) {
   if (!conn)
-    return set_efault();
+    goto error;
 
   assert(conn->state == WRITE_REQUEST);
 
@@ -138,17 +129,124 @@ bool write_request(Connection *conn) {
                     upstream->to_write)) > 0)
     upstream->write_index += write_status;
 
-  if (!write_status)
-    return err("write", "No write status");
+  if (!write_status) {
+    err("write", "No write status");
+    goto error;
+  }
 
   if (write_status == -1) {
     if (errno == EINTR && !RUNNING) // shutdown
       NULL;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
       NULL;
-    else
-      return err("write", strerror(errno));
+    else {
+      err("write", strerror(errno));
+      goto error;
+    }
   }
 
-  return true;
+  if (!upstream->to_write) // wait for upstream response, if request is sent
+    conn->state = READ_RESPONSE;
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = WRITE_ERROR;
+  return;
+}
+
+void read_response(Connection *conn) {
+  if (!conn)
+    goto error;
+
+  assert(conn->state == READ_RESPONSE);
+
+  Endpoint *upstream = &conn->upstream;
+
+  // in case continuing to read after dealing with previous response
+  if (upstream->next_index)
+    if (!pull_buf(upstream)) {
+      err("pull_buf", strerror(errno));
+      goto error;
+    }
+
+  ssize_t read_status = 0;
+
+  // new request should always start from the beginning of the buffer
+  while (
+      upstream->to_read &&
+      (read_status = read(upstream->fd, upstream->buffer + upstream->read_index,
+                          upstream->to_read)) > 0) {
+    upstream->read_index += read_status;
+    upstream->buffer[upstream->read_index] = '\0';
+    upstream->to_read = upstream->to_read - read_status;
+    puts(upstream->buffer);
+
+    if (!upstream->headers_found) {
+      char *headers_end = NULL;
+      if (!(headers_end = strstr(upstream->buffer, TRAILER))) {
+        if (upstream->read_index >= BUFFER_SIZE - 1) { // headers too long
+          conn->status = 500;
+          conn->state = WRITE_ERROR;
+          return;
+        }
+        continue;
+      } else
+        upstream->headers_found = true;
+
+      if (!verify_read(
+              conn)) { // error response status set, send error response
+        conn->state = WRITE_ERROR;
+        break;
+      }
+
+      // no content len or encoding was specified
+      if (upstream->headers_found && !upstream->to_read &&
+          !upstream->chunked) { // request complete, now verify it
+        conn->state = WRITE_RESPONSE;
+        break;
+      }
+      continue;
+    }
+
+    if (upstream->chunked) { // checking for last chunk, was not received during
+                             // verify_read()
+
+      // remember, here read_index will be the index of headers_end (one byte
+      // after last \n)
+      // AND read_index has NOT been advanced by read_status
+
+      if (find_last_chunk(upstream)) {
+        conn->state = WRITE_RESPONSE;
+        break;
+      }
+    }
+
+    if (!upstream->to_read) // done reading body, set from content-len
+      conn->state = WRITE_RESPONSE;
+  }
+
+  if (read_status == 0) { // client disconnect
+    conn->state = CLOSE_CONN;
+    err("read", "EOF received");
+    return;
+  }
+
+  if (read_status == -1) {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
+      NULL;
+    else {
+      err("read", strerror(errno));
+      goto error;
+    }
+  }
+
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = WRITE_ERROR;
+  return;
 }

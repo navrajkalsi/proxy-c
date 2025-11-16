@@ -12,38 +12,45 @@
 #include "utils.h"
 
 Config parse_args(int argc, char *argv[]) {
-  Config config = {.port = NULL, .accept_all = false, .upstream = NULL};
+  Config config = {.port = NULL,
+                   .canonical_host = NULL,
+                   .upstream = NULL,
+                   .accept_all = false};
 
   int arg;
   unsigned int args_parsed = 0;
 
-  while ((arg = getopt(argc, argv, "ahp:u:v")) != -1)
+  while ((arg = getopt(argc, argv, "ac:hp:u:v")) != -1)
     switch (arg) {
     case 'a':
       config.accept_all = true;
       args_parsed++;
       break;
+    case 'c':
+      if (!exec_regex(&origin_regex, optarg)) {
+        err("exec_regex", "Invalid canonical host passed");
+        free_config(&config);
+        exit(EXIT_FAILURE);
+      }
+      config.canonical_host = strdup(optarg);
+      args_parsed++;
+      break;
     case 'h':
       print_usage(argv[0]);
-      if (config.port)
-        free(config.port);
-      if (config.upstream)
-        free(config.upstream);
+      free_config(&config);
       exit(EXIT_SUCCESS);
     case 'p':
       if (!validate_port(optarg)) {
         err("validate_port", strerror(errno));
-        if (config.upstream)
-          free(config.upstream);
+        free_config(&config);
         exit(EXIT_FAILURE);
       }
       config.port = strdup(optarg);
       args_parsed++;
       break;
     case 'u':
-      if (!validate_upstream(optarg)) {
-        err("validate_url",
-            errno ? strerror(errno) : "Invalid upstream url passed");
+      if (!exec_regex(&origin_regex, optarg)) {
+        err("exec_regex", "Invalid upstream url passed");
         if (config.port)
           free(config.port);
         exit(EXIT_FAILURE);
@@ -56,7 +63,9 @@ Config parse_args(int argc, char *argv[]) {
       exit(EXIT_SUCCESS);
     case '?': // If an unknown flag or no argument is passed for an option
               // 'optopt' is set to the flag
-      if (optopt == 'p')
+      if (optopt == 'c')
+        err("parse_args", "Option '-c' requires a valid canonical host");
+      else if (optopt == 'p')
         err("parse_args", "Option '-p' requires a valid port number");
       else if (optopt == 'u')
         err("parse_args", "Option '-u' requires a valid upstream url");
@@ -70,25 +79,33 @@ Config parse_args(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-  // if not set with flag, verifying default
-  if (!config.upstream) {
-    if (!(validate_upstream(DEFAULT_UPSTREAM))) {
-      if (config.port)
-        free(config.port);
-      err("validate_url",
-          errno ? strerror(errno) : "Invalid upstream url passed");
+  // if not set with flag, verifying default values, using strdup() because
+  // config is freed in case of error
+  if (!config.canonical_host) {
+    if (!(exec_regex(&origin_regex, DEFAULT_CANONICAL_HOST))) {
+      err("exec_regex", "Invalid canonical host passed");
+      free_config(&config);
       exit(EXIT_FAILURE);
     }
-    config.upstream = DEFAULT_UPSTREAM;
+    config.canonical_host = strdup(DEFAULT_CANONICAL_HOST);
   }
+
+  if (!config.upstream) {
+    if (!(exec_regex(&origin_regex, DEFAULT_UPSTREAM))) {
+      err("exec_regex", "Invalid upstream url passed");
+      free_config(&config);
+      exit(EXIT_FAILURE);
+    }
+    config.upstream = strdup(DEFAULT_UPSTREAM);
+  }
+
   if (!config.port) {
     if (!(validate_port(DEFAULT_PORT))) {
-      if (config.upstream)
-        free(config.upstream);
-      err("validate_port", NULL);
+      err("validate_port", "Invalid port passed");
+      free_config(&config);
       exit(EXIT_FAILURE);
     }
-    config.port = DEFAULT_PORT;
+    config.port = strdup(DEFAULT_PORT);
   }
 
   print_args(args_parsed, &config);
@@ -103,9 +120,10 @@ void print_usage(const char *prg) {
          "Options:\n"
          "-a             Accept Incoming Connections from all IPs, defaults "
          "to Localhost only.\n"
+         "-c             Canonical Host to redirect requests to."
          "-h             Print this help message.\n"
          "-p <port>      Port to listen on.\n"
-         "-u <upstream>  Server URL to redirect requests to.\n"
+         "-u <upstream>  Server URL to contact for response.\n"
          "-v             Print the version number.\n",
          prg);
 }
@@ -119,9 +137,10 @@ void print_args(unsigned int args_parsed, const Config *config) {
   if (args_parsed)
     printf("\nParsed %u Argument(s).", args_parsed);
 
-  printf("\nUpstream URL set to: %s\n"
+  printf("\nCanonical Host set to: %s\n"
+         "Upstream URL set to: %s\n"
          "Listening Port set to: %s\n",
-         config->upstream, config->port);
+         config->canonical_host, config->upstream, config->port);
 
   config->accept_all
       ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
@@ -146,9 +165,16 @@ bool validate_port(char *port) {
   return true;
 }
 
-bool validate_upstream(char *upstream) {
-  if (!upstream)
-    return set_efault();
+void free_config(Config *config) {
+  if (!config)
+    return;
 
-  return exec_regex(&origin_regex, upstream);
+  if (config->canonical_host)
+    free(config->canonical_host);
+
+  if (config->upstream)
+    free(config->upstream);
+
+  if (config->port)
+    free(config->port);
 }
