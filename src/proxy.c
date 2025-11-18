@@ -154,7 +154,7 @@ bool start_proxy(void) {
 
       else if (conn->state == READ_REQUEST &&
                events & EPOLLIN) // read from client
-        read_client(conn);
+        read_request(conn);
 
       else if (conn->state == WRITE_ERROR &&
                events & EPOLLOUT) // error during read, do not contact upstream
@@ -166,11 +166,14 @@ bool start_proxy(void) {
 
       else if (conn->state == READ_RESPONSE &&
                events & EPOLLIN) // read from upstream
-        puts("Ready to read from server");
+        read_response(conn);
 
       else if (conn->state == WRITE_RESPONSE &&
                events & EPOLLOUT) // send to client
-        puts("Ready to send to client");
+        write_response(conn);
+
+      // think of a way to make read_index, to_read and content length work
+      // put read_index back
 
       else if (events & EPOLLHUP)
         puts("hang up");
@@ -244,6 +247,10 @@ again:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
     break;
 
+  case RESET_CONN:
+    reset_conn(conn);
+    break;
+
   case CLOSE_CONN:
     // TODO: free resources
     if (*client_fd >= 0)
@@ -292,6 +299,9 @@ void log_state(int state) {
     break;
   case WRITE_RESPONSE:
     puts("write_response");
+    break;
+  case RESET_CONN:
+    puts("reset_conn");
     break;
   case CLOSE_CONN:
     puts("close_conn");

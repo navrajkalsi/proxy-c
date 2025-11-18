@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -120,7 +121,7 @@ void write_request(Connection *conn) {
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
   // writing request headers from client buffer to upstream
-  upstream->to_write = client->buf_view.len - upstream->write_index;
+  upstream->to_write = client->headers.len - upstream->write_index;
   ssize_t write_status = 0;
 
   while ((upstream->to_write -= write_status) &&
@@ -160,6 +161,7 @@ void read_response(Connection *conn) {
     goto error;
 
   assert(conn->state == READ_RESPONSE);
+  assert(!conn->complete);
 
   Endpoint *upstream = &conn->upstream;
 
@@ -170,39 +172,29 @@ void read_response(Connection *conn) {
       goto error;
     }
 
-  ssize_t read_status = 0;
+  // must have written the buffer to client in full, before reading again
+  upstream->read_index = 0;
 
-  // new request should always start from the beginning of the buffer
+  ssize_t read_status = 0;
+  size_t max_read =
+      BUFFER_SIZE - upstream->read_index - 1; // most that can be read
+
   while (
-      upstream->to_read &&
+      (upstream->to_read -= read_status) && (max_read -= read_status) &&
       (read_status = read(upstream->fd, upstream->buffer + upstream->read_index,
-                          upstream->to_read)) > 0) {
+                          max_read)) > 0) {
     upstream->read_index += read_status;
     upstream->buffer[upstream->read_index] = '\0';
-    upstream->to_read = upstream->to_read - read_status;
-    puts(upstream->buffer);
+    // puts(upstream->buffer);
 
     if (!upstream->headers_found) {
-      char *headers_end = NULL;
-      if (!(headers_end = strstr(upstream->buffer, TRAILER))) {
-        if (upstream->read_index >= BUFFER_SIZE - 1) { // headers too long
-          conn->status = 500;
-          conn->state = WRITE_ERROR;
-          return;
-        }
-        continue;
-      } else
-        upstream->headers_found = true;
-
-      if (!verify_read(
-              conn)) { // error response status set, send error response
-        conn->state = WRITE_ERROR;
-        break;
-      }
+      if (!parse_headers(conn, &conn->upstream))
+        goto error;
 
       // no content len or encoding was specified
       if (upstream->headers_found && !upstream->to_read &&
-          !upstream->chunked) { // request complete, now verify it
+          !upstream->chunked) { // response complete
+        conn->complete = true;
         conn->state = WRITE_RESPONSE;
         break;
       }
@@ -210,27 +202,36 @@ void read_response(Connection *conn) {
     }
 
     if (upstream->chunked) { // checking for last chunk, was not received during
-                             // verify_read()
-
-      // remember, here read_index will be the index of headers_end (one byte
-      // after last \n)
-      // AND read_index has NOT been advanced by read_status
-
+                             // parse_headers()
       if (find_last_chunk(upstream)) {
+        conn->complete = true;
         conn->state = WRITE_RESPONSE;
         break;
       }
+
+      if (!max_read) {
+        conn->state = WRITE_RESPONSE;
+        break;
+      }
+
+      continue;
     }
 
-    if (!upstream->to_read) // done reading body, set from content-len
+    if (!upstream->to_read) { // done reading body, set from content-len or
+                              // buffer is full
+      if (max_read)           // is their space in buffer
+        conn->complete = true;
       conn->state = WRITE_RESPONSE;
+    }
   }
 
-  if (read_status == 0) { // client disconnect
+  if (read_status == 0) { // upstream disconnect
     conn->state = CLOSE_CONN;
     err("read", "EOF received");
     return;
   }
+
+  conn->state = WRITE_RESPONSE; // write whats in buffer
 
   if (read_status == -1) {
     if (errno == EINTR && !RUNNING) // shutdown

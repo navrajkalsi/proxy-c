@@ -1,7 +1,8 @@
 #pragma once
 
-#include "connection.h"
 #include <stdbool.h>
+
+#include "connection.h"
 
 // fills upstream_addrinfo by calling getaddrinfo() on the upstream
 // and selects the port matching the following, in order:

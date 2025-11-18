@@ -2,8 +2,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
 #include "main.h"
 #include "utils.h"
@@ -17,15 +17,17 @@ typedef enum {
   WRITE_REQUEST,
   READ_RESPONSE,
   WRITE_RESPONSE,
+  RESET_CONN,
   CLOSE_CONN
 } State;
 
+typedef enum { CLIENT, UPSTREAM } EndpointType;
+
 typedef struct endpoint {
   char buffer[BUFFER_SIZE];
+  EndpointType type;
   int fd;
-  Str buf_view; // for client: just request headers, for upstream full
-                // response or part of it ready to be written. buffer may
-                // contain more bytes than this
+  Str headers;           // buffer may contain more bytes than this
   ptrdiff_t read_index;  // where to start reading again
   ptrdiff_t write_index; // where to start writing from
   size_t to_read;       // more bytes to read, incase content-length is provided
@@ -36,7 +38,7 @@ typedef struct endpoint {
                         // current request, stop reading if new request is
                         // detected, in case of client
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
-                                            // read
+  // read
 } Endpoint;
 
 // struct to be used for adding/modding/deleting to the epoll instance
@@ -58,7 +60,8 @@ typedef struct connection {
 
   State state;
 
-  uint status; // http status code
+  uint status;   // http status code
+  bool complete; // full response received and sent
 
   struct connection *
       *self_ptr; // this will be an element of active_conns array, used to
@@ -78,6 +81,10 @@ bool activate_conn(Connection *conn);
 // by making self_ptr NULL which make the array entry NULL
 void deactivate_conn(Connection *conn);
 
+// resets connection variables to their defaults
+// to start a new request
+void reset_conn(Connection *conn);
+
 // calls fcntl to set non block option on a socket
 bool set_non_block(int fd);
 
@@ -89,3 +96,17 @@ bool mod_in_epoll(Connection *conn, int fd, int flags);
 
 // epoll_ctl with EPOLL_CTL_DEL
 bool del_from_epoll(int fd);
+
+// copies bytes from next_index to starting of buffer till read_index
+// & sets read index accordingly
+bool pull_buf(Endpoint *endpoint);
+
+// dynamically checks for last_chunk (fragmented or full) depending on the
+// chars in endpoint.last_chunk_found
+// starts to check from end of headers in client_buffer
+// returns true if chunk is received in full, or false if need to read more
+bool find_last_chunk(Endpoint *endpoint);
+
+// parsing common headers for both client and upstream
+// only call once per request/response
+bool parse_headers(Connection *conn, Endpoint *endpoint);

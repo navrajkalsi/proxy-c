@@ -1,15 +1,15 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stddef.h>
 
 #include "connection.h"
+#include "utils.h"
 
 // calls accept on listening socket fd and adds it to the epoll instance
 void accept_client(int proxy_fd);
 
 // called after EPOLLIN is detected on a client socketclient conn
-void read_client(Connection *conn);
+void read_request(Connection *conn);
 
 // whether to read more and how much to read more
 bool verify_read(Connection *conn);
@@ -27,3 +27,5 @@ bool generate_error_response(Connection *conn);
 bool write_error_response(Connection *conn);
 
 bool write_str(const Connection *conn, const Str *write);
+
+void write_response(Connection *conn);

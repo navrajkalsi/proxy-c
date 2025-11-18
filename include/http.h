@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 #include "connection.h"
+#include "utils.h"
 
 // takes in the value of host header and also compares it to the upstream
 bool validate_host(const Str *header);

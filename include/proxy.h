@@ -1,11 +1,6 @@
 #pragma once
 
-#include <netdb.h>
-
-#include "args.h"
 #include "connection.h"
-#include "main.h"
-#include "poll.h"
 
 // global array of conn structs that were added to the epoll table
 // init & free conn() add and remove from this array

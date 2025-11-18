@@ -5,8 +5,6 @@
 #include <stddef.h>
 #include <time.h>
 
-#include "connection.h"
-
 // string helper
 typedef struct str {
   char *data;
@@ -102,13 +100,3 @@ bool compile_regex(void);
 
 // encapsulating error reporting
 bool exec_regex(const regex_t *regex, const char *match);
-
-// copies bytes from next_index to starting of buffer till read_index
-// & sets read index accordingly
-bool pull_buf(Endpoint *endpoint);
-
-// dynamically checks for last_chunk (fragmented or full) depending on the
-// chars in endpoint.last_chunk_found
-// starts to check from end of headers in client_buffer
-// returns true if chunk is received in full, or false if need to read more
-bool find_last_chunk(Endpoint *endpoint);

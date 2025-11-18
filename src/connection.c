@@ -1,12 +1,16 @@
+#include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 
 #include "connection.h"
+#include "http.h"
 #include "main.h"
 #include "proxy.h"
 #include "utils.h"
@@ -27,36 +31,21 @@ Connection *init_conn(void) {
 
   memset(&conn->client_addr, 0, sizeof(struct sockaddr_storage));
 
-  conn->state =
-      READ_REQUEST; // remember to assign as ACCEPT_CLIENT, incase of proxy_fd
-
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
   // same vars across client and upstream
   client->fd = upstream->fd = -1;
-  client->buf_view.len = upstream->buf_view.len = 0;
   client->read_index = upstream->read_index = 0;
-  client->to_read = upstream->to_read = BUFFER_SIZE - 1;
-  client->to_write = upstream->to_write = 0;
   client->next_index = upstream->next_index = 0;
-  client->chunked = upstream->chunked = false;
-  client->headers_found = upstream->headers_found = false;
-  *client->last_chunk_found = *upstream->last_chunk_found = '\0';
 
-  // client
-  client->buf_view.data =
+  client->headers.data =
       client->buffer; // initally request points to beginning of the buffer
+  client->type = CLIENT;
 
-  // upstream
-  upstream->buf_view.data = upstream->buffer;
+  upstream->headers.data = upstream->buffer;
+  upstream->type = UPSTREAM;
 
-  // conn
-  conn->status = 0;
-  conn->proxy_fd = -1;
-  conn->http_ver = STR(FALLBACK_HTTP_VER);
-  conn->connection = ERR_STR;
-  conn->host = ERR_STR;
-  conn->path = ERR_STR;
+  reset_conn(conn);
 
   return conn;
 }
@@ -92,6 +81,30 @@ void deactivate_conn(Connection *conn) {
 
   *(conn->self_ptr) = NULL;
   conn->self_ptr = NULL;
+}
+
+void reset_conn(Connection *conn) {
+  if (!conn)
+    return;
+
+  conn->state = READ_REQUEST;
+
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
+
+  client->headers.len = upstream->headers.len = 0;
+  client->to_read = upstream->to_read = BUFFER_SIZE - 1;
+  client->to_write = upstream->to_write = 0;
+  client->chunked = upstream->chunked = false;
+  client->headers_found = upstream->headers_found = false;
+  *client->last_chunk_found = *upstream->last_chunk_found = '\0';
+
+  conn->status = 0;
+  conn->proxy_fd = -1;
+  conn->http_ver = STR(FALLBACK_HTTP_VER);
+  conn->connection = ERR_STR;
+  conn->host = ERR_STR;
+  conn->path = ERR_STR;
+  conn->complete = false;
 }
 
 // after non_block all the system calls on this fd return instantly,
@@ -142,5 +155,221 @@ bool del_from_epoll(int fd) {
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL) == -1)
     return err("epoll_ctl_del", strerror(errno));
 
+  return true;
+}
+
+bool pull_buf(Endpoint *endpoint) {
+  if (!endpoint)
+    return set_efault();
+
+  if (!endpoint->next_index) // nothing to do, read new request/response
+    return true;
+
+  assert(endpoint->read_index > endpoint->next_index);
+
+  size_t to_copy = endpoint->read_index - endpoint->next_index;
+  memcpy(endpoint->buffer, endpoint->buffer + endpoint->next_index, to_copy);
+  endpoint->read_index = to_copy;
+  endpoint->to_read = BUFFER_SIZE - endpoint->read_index - 1;
+  endpoint->next_index = 0;
+
+  endpoint->headers_found = false;
+
+  return true;
+}
+
+bool find_last_chunk(Endpoint *endpoint) {
+  if (!endpoint)
+    return set_efault();
+
+  assert(endpoint->headers_found);
+
+  // pointer at chars after headers
+  char *start = endpoint->buffer + endpoint->headers.len;
+
+  if (*start == '\0') // no body
+    return false;
+
+  // first checking if already reading last chunk from previous call
+  size_t matched = strlen(endpoint->last_chunk_found);
+
+  while (matched && matched < (size_t)LAST_CHUNK_STR.len &&
+         *start) {                       // continue to check for last_chunk
+    if (*start != LAST_CHUNK[matched]) { // mismatch
+      *endpoint->last_chunk_found = '\0';
+      matched = 0;
+      break;
+    }
+
+    endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
+    endpoint->last_chunk_found[++matched] = '\0';
+
+    start++;
+  }
+
+  if (matched == (size_t)LAST_CHUNK_STR.len) { // full chunk matched
+    if (*start)                                // next request
+      endpoint->next_index = start - endpoint->buffer;
+    return true;
+  } else if (matched) // full chunk not matched but ran out of chars
+    return false;     // read more
+
+  // nothing more to compare
+  if (!*start)
+    return false;
+
+  // last chunk not found in the beginning
+  char *last_chunk = LAST_CHUNK;
+  if ((last_chunk = strstr(start, last_chunk))) { // last chunk was read
+    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
+                          endpoint->buffer; // this is past the \n
+
+    if (endpoint->buffer[chunk_end]) // read the body and another request
+      endpoint->next_index = chunk_end;
+
+    // read the body and nothing more
+    return true;
+  }
+
+  // full last chunk not found, check last bytes in the buffer for worst case:
+  // '0\r\n\r'
+  start = endpoint->buffer + endpoint->headers.len;
+  size_t read_size = strlen(start), // num of chars available to check at most
+      to_match = read_size < (size_t)LAST_CHUNK_STR.len - 1
+                     ? read_size
+                     : (size_t)LAST_CHUNK_STR.len - 1;
+  ptrdiff_t match_index = read_size - to_match;
+  matched = 0;
+
+  // checking if 0 is received, only using last to_match bytes
+  while (start[match_index]) {
+    if (start[match_index] != LAST_CHUNK[matched]) {
+      matched = 0;
+      *endpoint->last_chunk_found = '\0'; // restart
+    } else {
+      endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
+      endpoint->last_chunk_found[++matched] = '\0';
+    }
+
+    match_index++;
+  }
+
+  return false;
+}
+
+bool parse_headers(Connection *conn, Endpoint *endpoint) {
+  if (!conn || !endpoint)
+    return set_efault();
+
+  // this function should not be used after the headers are read
+  assert(!endpoint->headers_found);
+  assert(endpoint->buffer[endpoint->read_index] == '\0');
+
+  // catering to both client and upstream
+  // rejecting body for client
+  // accepting body from upstream
+  bool client = endpoint == &conn->client,
+       upstream = endpoint == &conn->upstream;
+
+  if (!client && !upstream)
+    return err("verify_endpoint", "Unknown endpoint");
+
+  char *headers_end = NULL;
+  if (!(headers_end = strstr(endpoint->buffer, TRAILER))) {
+    if (endpoint->read_index >= BUFFER_SIZE - 1) { // no space left
+      conn->status = client ? 431 : 500;
+      return err("strstr", "Headers too large");
+    }
+    return true; // read more
+  } else
+    endpoint->headers_found = true;
+
+  headers_end += TRAILER_STR.len; // now past the last \n
+  size_t headers_size = headers_end - endpoint->buffer;
+
+  endpoint->headers.data = endpoint->buffer;
+  endpoint->headers.len = headers_size;
+
+  // tmp null termination for get_header_value(), so I do not get to the next
+  // request or search for the header in the body (if read)
+  char org_char = *headers_end;
+  *headers_end = '\0';
+
+  Str misc = ERR_STR; // misc str to contain the header value
+  if (get_header_value(endpoint->buffer, "Content-Length", &misc)) {
+    *headers_end = org_char;
+    Str *content_len_str = &misc;
+
+    for (int i = 0; i < content_len_str->len; i++)
+      if (!isdigit(content_len_str->data[i])) {
+        conn->status = client ? 400 : 500;
+        return err("isdigit", "Invalid content-length header value");
+      }
+
+    // a null terminated str for atoi()
+    char *temp = strndup(content_len_str->data, content_len_str->len);
+    int content_len = atoi(temp);
+    free(temp);
+
+    if (!content_len) // empty body
+      goto read_complete;
+
+    if (content_len > 10 * MB) {
+      conn->status = client ? 413 : 500;
+      return err("verify_content_len", "Content too large");
+    }
+
+    size_t full_size = headers_size + content_len;
+
+    if (full_size ==
+        (size_t)endpoint->read_index) // body read already, but nothing else
+      goto read_complete;
+
+    if (full_size <
+        (size_t)endpoint->read_index) { // body read and another request
+      endpoint->next_index =
+          full_size + 1; // will be copied to the start for next read
+      goto read_complete;
+    }
+
+    endpoint->to_read = full_size - endpoint->read_index;
+
+    if (client) // no need to store body for client
+      goto disregard_body;
+
+    return true; // store body for upstream
+
+  } else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc)) {
+    *headers_end = org_char;
+    Str *transfer_encoding = &misc;
+
+    if (!equals(*transfer_encoding, STR("chunked"))) {
+      conn->status = client ? 411 : 500;
+      return err("verify_encoding", "Encoding method not supported");
+    }
+
+    // finding full last chunk or partial from last few bytes
+    // worst case, got: '0\r\n\r'
+    if (find_last_chunk(endpoint))
+      goto read_complete;
+
+    endpoint->chunked = true;
+
+    if (client)
+      goto disregard_body;
+
+    return true;
+
+  } else {
+    *headers_end = org_char;
+    goto read_complete;
+  }
+
+read_complete:
+  endpoint->to_read = 0;
+  return true;
+
+disregard_body:
+  endpoint->read_index = headers_size;
   return true;
 }

@@ -135,7 +135,7 @@ void print_request(const Connection *conn) {
     return;
 
   // just request line
-  char *request_line = conn->client.buf_view.data;
+  char *request_line = conn->client.headers.data;
   if (!request_line)
     return;
 

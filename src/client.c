@@ -71,7 +71,7 @@ void accept_client(int proxy_fd) {
   return;
 }
 
-void read_client(Connection *conn) {
+void read_request(Connection *conn) {
   if (!conn)
     goto error;
 
@@ -186,8 +186,8 @@ bool verify_read(Connection *conn) {
   headers_end += TRAILER_STR.len; // now past the last \n
   size_t headers_size = headers_end - client->buffer;
 
-  client->buf_view.data = client->buffer;
-  client->buf_view.len = headers_size;
+  client->headers.data = client->buffer;
+  client->headers.len = headers_size;
 
   // tmp null termination for get_header_value(), so I do not get to the next
   // request or search for the header in the body (if read)
@@ -272,8 +272,7 @@ bool verify_request(Connection *conn) {
   assert(conn->state == VERIFY_REQUEST);
 
   Endpoint *client = &conn->client;
-  Str headers = client->buf_view;
-  Cut c = cut(headers, ' ');
+  Cut c = cut(client->headers, ' ');
 
   // verifying method
   if (!c.found) {
@@ -388,6 +387,7 @@ bool generate_error_response(Connection *conn) {
                         .len = (ptrdiff_t)strlen(config.canonical_host)},
             response_headers[] = {
                 STR(FALLBACK_HTTP_VER),
+                SPACE_STR,
                 err_str,
                 STR("\r\nServer: " SERVER "\r\nDate: "),
                 date_str,
@@ -472,4 +472,56 @@ bool write_str(const Connection *conn, const Str *str) {
   }
 
   return true;
+}
+
+void write_response(Connection *conn) {
+  if (!conn)
+    goto error;
+
+  assert(conn->state == WRITE_RESPONSE);
+
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
+
+  // reset to begin again
+  if (!client->to_write)
+    client->write_index = 0;
+
+  client->to_write =
+      upstream->read_index - upstream->next_index - client->write_index;
+  ssize_t write_status = 0;
+
+  while (
+      (client->to_write -= write_status) &&
+      (write_status = write(client->fd, upstream->buffer + client->write_index,
+                            client->to_write)) > 0)
+    client->write_index += write_status;
+
+  if (!write_status) {
+    err("write", "No write status");
+    goto error;
+  }
+
+  if (write_status == -1) {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
+      NULL;
+    else {
+      err("write", strerror(errno));
+      goto error;
+    }
+  }
+
+  if (!client->to_write && !conn->complete)
+    conn->state = READ_RESPONSE;
+
+  if (conn->complete)
+    conn->state = CLOSE_CONN;
+
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = WRITE_ERROR;
+  return;
 }
