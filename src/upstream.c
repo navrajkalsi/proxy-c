@@ -3,11 +3,13 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "connection.h"
@@ -174,54 +176,52 @@ void read_response(Connection *conn) {
 
   // must have written the buffer to client in full, before reading again
   upstream->read_index = 0;
+  *upstream->buffer = '\0';
 
   ssize_t read_status = 0;
-  size_t max_read =
-      BUFFER_SIZE - upstream->read_index - 1; // most that can be read
+  size_t max_read = BUFFER_SIZE - upstream->read_index - 1;
 
   while (
-      (upstream->to_read -= read_status) && (max_read -= read_status) &&
+      (max_read -= read_status) &&
       (read_status = read(upstream->fd, upstream->buffer + upstream->read_index,
                           max_read)) > 0) {
-    upstream->read_index += read_status;
-    upstream->buffer[upstream->read_index] = '\0';
-    // puts(upstream->buffer);
+    {
+      upstream->read_index += read_status;
+      upstream->buffer[upstream->read_index] = '\0';
+    }
 
     if (!upstream->headers_found) {
       if (!parse_headers(conn, &conn->upstream))
         goto error;
 
       // no content len or encoding was specified
-      if (upstream->headers_found && !upstream->to_read &&
-          !upstream->chunked) { // response complete
-        conn->complete = true;
-        conn->state = WRITE_RESPONSE;
-        break;
-      }
-      continue;
-    }
+      // or full response read
+      if (upstream->headers_found && !upstream->to_read)
+        goto complete;
 
-    if (upstream->chunked) { // checking for last chunk, was not received during
-                             // parse_headers()
-      if (find_last_chunk(upstream)) {
-        conn->complete = true;
-        conn->state = WRITE_RESPONSE;
-        break;
-      }
+    } else if (upstream->content_len) { // bytes left from content len
 
-      if (!max_read) {
-        conn->state = WRITE_RESPONSE;
-        break;
-      }
+      size_t extra = (size_t)read_status > upstream->to_read
+                         ? (size_t)read_status - upstream->to_read
+                         : 0;
 
-      continue;
-    }
+      if (extra) {
+        upstream->to_read = 0;
+        upstream->next_index = upstream->read_index - extra;
+      } else
+        upstream->to_read -= read_status;
 
-    if (!upstream->to_read) { // done reading body, set from content-len or
-                              // buffer is full
-      if (max_read)           // is their space in buffer
-        conn->complete = true;
-      conn->state = WRITE_RESPONSE;
+      if (!upstream->to_read)
+        goto complete;
+
+    } else if (upstream->chunked) { // checking for last chunk, was not received
+                                    // during parse_headers()
+      if (find_last_chunk(upstream))
+        goto complete;
+
+    } else {
+      err("verify_upstream_read", "No read condition met. Logic error!");
+      goto error;
     }
   }
 
@@ -244,6 +244,11 @@ void read_response(Connection *conn) {
     }
   }
 
+  return;
+
+complete:
+  conn->complete = true;
+  conn->state = WRITE_RESPONSE;
   return;
 
 error:

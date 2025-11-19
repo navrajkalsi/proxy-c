@@ -94,6 +94,7 @@ void reset_conn(Connection *conn) {
   client->headers.len = upstream->headers.len = 0;
   client->to_read = upstream->to_read = BUFFER_SIZE - 1;
   client->to_write = upstream->to_write = 0;
+  client->content_len = upstream->content_len = 0;
   client->chunked = upstream->chunked = false;
   client->headers_found = upstream->headers_found = false;
   *client->last_chunk_found = *upstream->last_chunk_found = '\0';
@@ -187,7 +188,7 @@ bool find_last_chunk(Endpoint *endpoint) {
   // pointer at chars after headers
   char *start = endpoint->buffer + endpoint->headers.len;
 
-  if (*start == '\0') // no body
+  if (!*start) // no body
     return false;
 
   // first checking if already reading last chunk from previous call
@@ -219,6 +220,7 @@ bool find_last_chunk(Endpoint *endpoint) {
     return false;
 
   // last chunk not found in the beginning
+  // now searching beyond
   char *last_chunk = LAST_CHUNK;
   if ((last_chunk = strstr(start, last_chunk))) { // last chunk was read
     ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
@@ -285,10 +287,9 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
     endpoint->headers_found = true;
 
   headers_end += TRAILER_STR.len; // now past the last \n
-  size_t headers_size = headers_end - endpoint->buffer;
 
   endpoint->headers.data = endpoint->buffer;
-  endpoint->headers.len = headers_size;
+  endpoint->headers.len = headers_end - endpoint->buffer;
 
   // tmp null termination for get_header_value(), so I do not get to the next
   // request or search for the header in the body (if read)
@@ -308,18 +309,18 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
 
     // a null terminated str for atoi()
     char *temp = strndup(content_len_str->data, content_len_str->len);
-    int content_len = atoi(temp);
+    endpoint->content_len = atoi(temp);
     free(temp);
 
-    if (!content_len) // empty body
+    if (!endpoint->content_len) // empty body
       goto read_complete;
 
-    if (content_len > 10 * MB) {
+    if (endpoint->content_len > 10 * MB) {
       conn->status = client ? 413 : 500;
       return err("verify_content_len", "Content too large");
     }
 
-    size_t full_size = headers_size + content_len;
+    size_t full_size = endpoint->headers.len + endpoint->content_len;
 
     if (full_size ==
         (size_t)endpoint->read_index) // body read already, but nothing else
@@ -370,6 +371,6 @@ read_complete:
   return true;
 
 disregard_body:
-  endpoint->read_index = headers_size;
+  endpoint->read_index = endpoint->headers.len;
   return true;
 }

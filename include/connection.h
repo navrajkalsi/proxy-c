@@ -33,10 +33,11 @@ typedef struct endpoint {
   size_t to_read;       // more bytes to read, incase content-length is provided
   size_t to_write;      // bytes remaining to write, across writes
   ptrdiff_t next_index; // incase 2 requests/responses arrive back to back
-  bool chunked;         // transfer encoding
-  bool headers_found;   // if nothing more is needed to be read from the
-                        // current request, stop reading if new request is
-                        // detected, in case of client
+  size_t content_len; // for client - len of req body,upstream - len of res body
+  bool chunked;       // transfer encoding
+  bool headers_found; // if nothing more is needed to be read from the
+                      // current request, stop reading if new request is
+                      // detected, in case of client
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
   // read
 } Endpoint;
