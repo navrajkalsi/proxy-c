@@ -8,7 +8,8 @@
 #include "main.h"
 #include "utils.h"
 
-typedef enum {
+typedef enum
+{
   ACCEPT_CLIENT, // only if proxy_fd is set
   READ_REQUEST,
   VERIFY_REQUEST,
@@ -21,32 +22,37 @@ typedef enum {
   CLOSE_CONN
 } State;
 
-typedef enum { CLIENT, UPSTREAM } EndpointType;
+typedef enum
+{
+  CLIENT,
+  UPSTREAM
+} EndpointType;
 
-typedef struct endpoint {
+typedef struct endpoint
+{
   char buffer[BUFFER_SIZE];
   EndpointType type;
   int fd;
   Str headers;           // buffer may contain more bytes than this
   ptrdiff_t read_index;  // where to start reading again
   ptrdiff_t write_index; // where to start writing from
-  size_t to_read;       // more bytes to read, incase content-length is provided
-  size_t to_write;      // bytes remaining to write, across writes
-  ptrdiff_t next_index; // incase 2 requests/responses arrive back to back
-  size_t content_len; // for client - len of req body,upstream - len of res body
-  bool chunked;       // transfer encoding
-  bool headers_found; // if nothing more is needed to be read from the
-                      // current request, stop reading if new request is
-                      // detected, in case of client
+  size_t to_read;        // more bytes to read, incase content-length is provided
+  size_t to_write;       // bytes remaining to write, across writes
+  ptrdiff_t next_index;  // incase 2 requests/responses arrive back to back
+  size_t content_len;    // for client - len of req body,upstream - len of res body
+  bool chunked;          // transfer encoding
+  bool headers_found;    // if nothing more is needed to be read from the
+                         // current request, stop reading if new request is
+                         // detected, in case of client
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
   // read
 } Endpoint;
 
 // struct to be used for adding/modding/deleting to the epoll instance
-// every epoll_event.data in the epoll instance will have its data as a pointer
-// to this struct
+// every epoll_event.data in the epoll instance will have its data as a pointer to this struct
 // target fd will depend on the state of the conn
-typedef struct connection {
+typedef struct connection
+{
   struct sockaddr_storage client_addr; // filled by accept()
 
   Endpoint client;
@@ -64,13 +70,11 @@ typedef struct connection {
   uint status;   // http status code
   bool complete; // full response received and sent
 
-  struct connection *
-      *self_ptr; // this will be an element of active_conns array, used to
-                 // deactive/remove from active_conns(just make this NULL)
+  struct connection **self_ptr; // this will be an element of active_conns array, used to
+                                // deactive/remove from active_conns(just make this NULL)
 } Connection;
 
-// Returns a pointer to conn that needs to be added to the epoll_instance
-// & activates it
+// Returns a pointer to conn that needs to be added to the epoll_instance & activates it
 Connection *init_conn(void);
 
 void free_conn(Connection **conn);
@@ -78,12 +82,10 @@ void free_conn(Connection **conn);
 // adds conn to the active_conns array
 bool activate_conn(Connection *conn);
 
-// removes event from active_conns array
-// by making self_ptr NULL which make the array entry NULL
+// removes event from active_conns array by making self_ptr NULL which make the array entry NULL
 void deactivate_conn(Connection *conn);
 
-// resets connection variables to their defaults
-// to start a new request
+// resets connection variables to their defaults to start a new request
 void reset_conn(Connection *conn);
 
 // calls fcntl to set non block option on a socket
@@ -98,8 +100,7 @@ bool mod_in_epoll(Connection *conn, int fd, int flags);
 // epoll_ctl with EPOLL_CTL_DEL
 bool del_from_epoll(int fd);
 
-// copies bytes from next_index to starting of buffer till read_index
-// & sets read index accordingly
+// copies bytes from next_index to starting of buffer till read_index & sets read index accordingly
 bool pull_buf(Endpoint *endpoint);
 
 // dynamically checks for last_chunk (fragmented or full) depending on the
@@ -108,6 +109,5 @@ bool pull_buf(Endpoint *endpoint);
 // returns true if chunk is received in full, or false if need to read more
 bool find_last_chunk(Endpoint *endpoint);
 
-// parsing common headers for both client and upstream
-// only call once per request/response
+// parsing common headers for both client and upstream only call once per request/response
 bool parse_headers(Connection *conn, Endpoint *endpoint);

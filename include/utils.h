@@ -6,12 +6,14 @@
 #include <time.h>
 
 // string helper
-typedef struct str {
+typedef struct str
+{
   char *data;
   ptrdiff_t len;
 } Str;
 
-typedef struct {
+typedef struct
+{
   Str head;
   Str tail;
   bool found;
@@ -40,17 +42,16 @@ Str takehead(Str str, ptrdiff_t take);
 Str drophead(Str str, ptrdiff_t drop);
 
 // cuts a string around the separator without copying str
-// The head and tail are just pointers to the org str with different lengths and
-// starting values
+// The head and tail are just pointers to the org str with different lengths and starting values
 Cut cut(Str str, char sep);
 
 // checks if str contains chars anywhere
 // returns the index (if found), otherwise -1
 ptrdiff_t contains(const Str *str, const char *chars);
 
-// error node, with name of the errored funciton and its error description
-// typically from strerror()
-typedef struct errorNode {
+// error node, with name of the errored funciton and its error description typically from strerror()
+typedef struct errorNode
+{
   char *function; // function name that errored
   char *error;    // error description
   time_t time;    // time of error

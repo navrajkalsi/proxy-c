@@ -11,8 +11,7 @@
 // else fallbacks to FALLBACK_UPSTREAM_PORT
 bool setup_upstream(char *upstream);
 
-// prepares a new socket for upstream, connects to it points upstream_fd to the
-// new socket fd
+// prepares a new socket for upstream, connects to it points upstream_fd to the new socket fd
 bool connect_upstream(int *upstream_fd);
 
 void free_upstream_addrinfo(void);

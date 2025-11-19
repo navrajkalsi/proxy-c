@@ -2,7 +2,8 @@
 
 #include <stdbool.h>
 
-typedef struct config {
+typedef struct config
+{
   char *port;
   char *canonical_host;
   char *upstream;

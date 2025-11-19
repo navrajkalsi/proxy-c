@@ -15,16 +15,18 @@
 #include "proxy.h"
 #include "utils.h"
 
-Connection *init_conn(void) {
+Connection *init_conn(void)
+{
   Connection *conn;
-  if (!(conn = malloc(sizeof(Connection)))) {
+  if (!(conn = malloc(sizeof(Connection))))
+  {
     err("malloc", strerror(errno));
     return NULL;
   }
 
-  if (!activate_conn(conn)) {
-    err("activate_conn",
-        errno ? strerror(errno) : "Max limit of active connections reached");
+  if (!activate_conn(conn))
+  {
+    err("activate_conn", errno ? strerror(errno) : "Max limit of active connections reached");
     free(conn);
     return NULL;
   }
@@ -38,8 +40,7 @@ Connection *init_conn(void) {
   client->read_index = upstream->read_index = 0;
   client->next_index = upstream->next_index = 0;
 
-  client->headers.data =
-      client->buffer; // initally request points to beginning of the buffer
+  client->headers.data = client->buffer; // initally request points to beginning of the buffer
   client->type = CLIENT;
 
   upstream->headers.data = upstream->buffer;
@@ -50,7 +51,8 @@ Connection *init_conn(void) {
   return conn;
 }
 
-void free_conn(Connection **conn) {
+void free_conn(Connection **conn)
+{
   if (!conn || !*conn)
     return;
 
@@ -61,12 +63,14 @@ void free_conn(Connection **conn) {
   to_free = NULL;
 }
 
-bool activate_conn(Connection *conn) {
+bool activate_conn(Connection *conn)
+{
   if (!conn)
     return set_efault();
 
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
-    if (!active_conns[i]) {
+    if (!active_conns[i])
+    {
       active_conns[i] = conn;
       conn->self_ptr = active_conns + i;
       return true;
@@ -75,7 +79,8 @@ bool activate_conn(Connection *conn) {
   return false;
 }
 
-void deactivate_conn(Connection *conn) {
+void deactivate_conn(Connection *conn)
+{
   if (!conn)
     return;
 
@@ -83,7 +88,8 @@ void deactivate_conn(Connection *conn) {
   conn->self_ptr = NULL;
 }
 
-void reset_conn(Connection *conn) {
+void reset_conn(Connection *conn)
+{
   if (!conn)
     return;
 
@@ -111,7 +117,8 @@ void reset_conn(Connection *conn) {
 // after non_block all the system calls on this fd return instantly,
 // like read() or write(). so we can deal with other fds and their
 // events without waiting for this fd to finish
-bool set_non_block(int fd) {
+bool set_non_block(int fd)
+{
   int flags = fcntl(fd, F_GETFL, 0);
   if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
     return err("fcntl", strerror(errno));
@@ -121,15 +128,15 @@ bool set_non_block(int fd) {
 // adds the entry in the interest list of epoll instance
 // essentially adds fd to epoll_fd list and the event specifies what to
 // wait for & what fd to do that for
-bool add_to_epoll(Connection *conn, int fd, int flags) {
+bool add_to_epoll(Connection *conn, int fd, int flags)
+{
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
   struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)conn};
 
   if (fd == -1)
-    return err("get_target_fd",
-               "Socket is probably being added to epoll before "
-               "accepting/connecting");
+    return err("get_target_fd", "Socket is probably being added to epoll before "
+                                "accepting/connecting");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, fd, &epoll_event) == -1)
     return err("epoll_ctl_add", strerror(errno));
@@ -137,7 +144,8 @@ bool add_to_epoll(Connection *conn, int fd, int flags) {
   return true;
 }
 
-bool mod_in_epoll(Connection *conn, int fd, int flags) {
+bool mod_in_epoll(Connection *conn, int fd, int flags)
+{
   struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)conn};
 
   if (fd == -1)
@@ -149,7 +157,8 @@ bool mod_in_epoll(Connection *conn, int fd, int flags) {
   return true;
 }
 
-bool del_from_epoll(int fd) {
+bool del_from_epoll(int fd)
+{
   if (fd == -1)
     return err("get_target_fd", "Socket fd is not initialized");
 
@@ -159,7 +168,8 @@ bool del_from_epoll(int fd) {
   return true;
 }
 
-bool pull_buf(Endpoint *endpoint) {
+bool pull_buf(Endpoint *endpoint)
+{
   if (!endpoint)
     return set_efault();
 
@@ -179,7 +189,8 @@ bool pull_buf(Endpoint *endpoint) {
   return true;
 }
 
-bool find_last_chunk(Endpoint *endpoint) {
+bool find_last_chunk(Endpoint *endpoint)
+{
   if (!endpoint)
     return set_efault();
 
@@ -194,9 +205,10 @@ bool find_last_chunk(Endpoint *endpoint) {
   // first checking if already reading last chunk from previous call
   size_t matched = strlen(endpoint->last_chunk_found);
 
-  while (matched && matched < (size_t)LAST_CHUNK_STR.len &&
-         *start) {                       // continue to check for last_chunk
-    if (*start != LAST_CHUNK[matched]) { // mismatch
+  while (matched && matched < (size_t)LAST_CHUNK_STR.len && *start)
+  { // continue to check for last_chunk
+    if (*start != LAST_CHUNK[matched])
+    { // mismatch
       *endpoint->last_chunk_found = '\0';
       matched = 0;
       break;
@@ -208,12 +220,14 @@ bool find_last_chunk(Endpoint *endpoint) {
     start++;
   }
 
-  if (matched == (size_t)LAST_CHUNK_STR.len) { // full chunk matched
-    if (*start)                                // next request
+  if (matched == (size_t)LAST_CHUNK_STR.len)
+  {             // full chunk matched
+    if (*start) // next request
       endpoint->next_index = start - endpoint->buffer;
     return true;
-  } else if (matched) // full chunk not matched but ran out of chars
-    return false;     // read more
+  }
+  else if (matched) // full chunk not matched but ran out of chars
+    return false;   // read more
 
   // nothing more to compare
   if (!*start)
@@ -222,9 +236,10 @@ bool find_last_chunk(Endpoint *endpoint) {
   // last chunk not found in the beginning
   // now searching beyond
   char *last_chunk = LAST_CHUNK;
-  if ((last_chunk = strstr(start, last_chunk))) { // last chunk was read
-    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK_STR.len) -
-                          endpoint->buffer; // this is past the \n
+  if ((last_chunk = strstr(start, last_chunk)))
+  { // last chunk was read
+    ptrdiff_t chunk_end =
+        (last_chunk + LAST_CHUNK_STR.len) - endpoint->buffer; // this is past the \n
 
     if (endpoint->buffer[chunk_end]) // read the body and another request
       endpoint->next_index = chunk_end;
@@ -237,18 +252,21 @@ bool find_last_chunk(Endpoint *endpoint) {
   // '0\r\n\r'
   start = endpoint->buffer + endpoint->headers.len;
   size_t read_size = strlen(start), // num of chars available to check at most
-      to_match = read_size < (size_t)LAST_CHUNK_STR.len - 1
-                     ? read_size
-                     : (size_t)LAST_CHUNK_STR.len - 1;
+      to_match =
+          read_size < (size_t)LAST_CHUNK_STR.len - 1 ? read_size : (size_t)LAST_CHUNK_STR.len - 1;
   ptrdiff_t match_index = read_size - to_match;
   matched = 0;
 
   // checking if 0 is received, only using last to_match bytes
-  while (start[match_index]) {
-    if (start[match_index] != LAST_CHUNK[matched]) {
+  while (start[match_index])
+  {
+    if (start[match_index] != LAST_CHUNK[matched])
+    {
       matched = 0;
       *endpoint->last_chunk_found = '\0'; // restart
-    } else {
+    }
+    else
+    {
       endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
       endpoint->last_chunk_found[++matched] = '\0';
     }
@@ -259,7 +277,8 @@ bool find_last_chunk(Endpoint *endpoint) {
   return false;
 }
 
-bool parse_headers(Connection *conn, Endpoint *endpoint) {
+bool parse_headers(Connection *conn, Endpoint *endpoint)
+{
   if (!conn || !endpoint)
     return set_efault();
 
@@ -270,20 +289,22 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
   // catering to both client and upstream
   // rejecting body for client
   // accepting body from upstream
-  bool client = endpoint == &conn->client,
-       upstream = endpoint == &conn->upstream;
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
 
   if (!client && !upstream)
     return err("verify_endpoint", "Unknown endpoint");
 
   char *headers_end = NULL;
-  if (!(headers_end = strstr(endpoint->buffer, TRAILER))) {
-    if (endpoint->read_index >= BUFFER_SIZE - 1) { // no space left
+  if (!(headers_end = strstr(endpoint->buffer, TRAILER)))
+  {
+    if (endpoint->read_index >= BUFFER_SIZE - 1)
+    { // no space left
       conn->status = client ? 431 : 500;
       return err("strstr", "Headers too large");
     }
     return true; // read more
-  } else
+  }
+  else
     endpoint->headers_found = true;
 
   headers_end += TRAILER_STR.len; // now past the last \n
@@ -297,12 +318,14 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
   *headers_end = '\0';
 
   Str misc = ERR_STR; // misc str to contain the header value
-  if (get_header_value(endpoint->buffer, "Content-Length", &misc)) {
+  if (get_header_value(endpoint->buffer, "Content-Length", &misc))
+  {
     *headers_end = org_char;
     Str *content_len_str = &misc;
 
     for (int i = 0; i < content_len_str->len; i++)
-      if (!isdigit(content_len_str->data[i])) {
+      if (!isdigit(content_len_str->data[i]))
+      {
         conn->status = client ? 400 : 500;
         return err("isdigit", "Invalid content-length header value");
       }
@@ -315,21 +338,20 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
     if (!endpoint->content_len) // empty body
       goto read_complete;
 
-    if (endpoint->content_len > 10 * MB) {
+    if (endpoint->content_len > 10 * MB)
+    {
       conn->status = client ? 413 : 500;
       return err("verify_content_len", "Content too large");
     }
 
     size_t full_size = endpoint->headers.len + endpoint->content_len;
 
-    if (full_size ==
-        (size_t)endpoint->read_index) // body read already, but nothing else
+    if (full_size == (size_t)endpoint->read_index) // body read already, but nothing else
       goto read_complete;
 
-    if (full_size <
-        (size_t)endpoint->read_index) { // body read and another request
-      endpoint->next_index =
-          full_size + 1; // will be copied to the start for next read
+    if (full_size < (size_t)endpoint->read_index)
+    {                                       // body read and another request
+      endpoint->next_index = full_size + 1; // will be copied to the start for next read
       goto read_complete;
     }
 
@@ -339,12 +361,14 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
       goto disregard_body;
 
     return true; // store body for upstream
-
-  } else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc)) {
+  }
+  else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc))
+  {
     *headers_end = org_char;
     Str *transfer_encoding = &misc;
 
-    if (!equals(*transfer_encoding, STR("chunked"))) {
+    if (!equals(*transfer_encoding, STR("chunked")))
+    {
       conn->status = client ? 411 : 500;
       return err("verify_encoding", "Encoding method not supported");
     }
@@ -360,8 +384,9 @@ bool parse_headers(Connection *conn, Endpoint *endpoint) {
       goto disregard_body;
 
     return true;
-
-  } else {
+  }
+  else
+  {
     *headers_end = org_char;
     goto read_complete;
   }

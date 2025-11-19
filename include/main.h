@@ -18,10 +18,8 @@
 #define DEFAULT_UPSTREAM "localhost:8080"
 #endif
 #ifndef ORIGIN_REGEX
-#define ORIGIN_REGEX                                                           \
-  "^(https?:\\/\\/"                                                            \
-  ")?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?"  \
-  "\\/?$"
+#define ORIGIN_REGEX                                                                               \
+  "^(https?:\\/\\/)?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?\\/?$"
 #endif
 
 // http.h specific
@@ -34,16 +32,14 @@
 #define TERMINAL_WIDTH 80
 #endif
 #define ERR_STR (Str){NULL, 0}
-#define STR(str)                                                               \
+#define STR(str)                                                                                   \
   (Str) { str, (ptrdiff_t)(sizeof(str) - 1) }
 
 // event.h specific
 #define BUFFER_SIZE 8192
 #define MB 1048576
-#define READ_FLAGS                                                             \
-  EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
-#define WRITE_FLAGS                                                            \
-  EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
+#define READ_FLAGS EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
+#define WRITE_FLAGS EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR
 #define ERROR_FLAGS EPOLLHUP | EPOLLRDHUP | EPOLLERR
 
 // proxy.h specific

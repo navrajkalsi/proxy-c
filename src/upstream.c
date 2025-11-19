@@ -21,7 +21,8 @@
 // upstream server
 struct addrinfo *upstream_addrinfo = NULL;
 
-bool setup_upstream(char *upstream) {
+bool setup_upstream(char *upstream)
+{
   if (!upstream)
     return set_efault();
 
@@ -39,16 +40,19 @@ bool setup_upstream(char *upstream) {
 
   if (colon == upstream) // no : found
     port = FALLBACK_UPSTREAM_PORT;
-  else {
+  else
+  {
     --colon; // now colon is at ':', makes reasoning a little easier
-    if (colon[1] == '/') {  // the colon is followed after http or https
-      if (colon[-1] == 's') // https
+    if (colon[1] == '/')
+    { // the colon is followed after http or https
+      if (colon[-1] == 's')
         port = "443";
-      else // http
+      else
         port = "80";
-    } else { // the colon is followed by the port at the end
-      *colon =
-          '\0'; // now the port and origin are separated by a null terminator
+    }
+    else
+    {                 // the colon is followed by the port at the end
+      *colon = '\0';  // now the port and origin are separated by a null terminator
       revert = colon; // need to revert it back to the original format to be
                       // able to compare to the host header of the request
       port = ++colon;
@@ -65,8 +69,7 @@ bool setup_upstream(char *upstream) {
   if ((status = getaddrinfo(upstream, port, &hints, &upstream_addrinfo)) != 0)
     return err("getaddrinfo", gai_strerror(status));
 
-  // getaddrinfo() makes system calls that may sometime set errno, even if the
-  // getaddrinfo returns 0
+  // getaddrinfo() makes system calls that may sometime set errno, even if getaddrinfo returns 0
   errno = 0;
 
   if (revert)
@@ -75,17 +78,19 @@ bool setup_upstream(char *upstream) {
   return true;
 }
 
-bool connect_upstream(int *upstream_fd) {
+bool connect_upstream(int *upstream_fd)
+{
   if (!upstream_addrinfo)
     return err("verify_upstream", "Upstream address info is NULL");
 
-  for (struct addrinfo *current = upstream_addrinfo; current;
-       current = current->ai_next) {
-    if ((*upstream_fd = socket(current->ai_family, current->ai_socktype,
-                               current->ai_protocol)) == -1)
+  for (struct addrinfo *current = upstream_addrinfo; current; current = current->ai_next)
+  {
+    if ((*upstream_fd = socket(current->ai_family, current->ai_socktype, current->ai_protocol)) ==
+        -1)
       continue;
 
-    if (connect(*upstream_fd, current->ai_addr, current->ai_addrlen) == -1) {
+    if (connect(*upstream_fd, current->ai_addr, current->ai_addrlen) == -1)
+    {
       close(*upstream_fd);
       *upstream_fd = -2;
       continue;
@@ -95,8 +100,8 @@ bool connect_upstream(int *upstream_fd) {
     break;
   };
 
-  // dealing with different errors
-  if (*upstream_fd < 0) {
+  if (*upstream_fd < 0)
+  { // dealing with different errors
     if (*upstream_fd == -1)
       return err("socket", strerror(errno));
     else if (*upstream_fd == -2)
@@ -109,12 +114,14 @@ bool connect_upstream(int *upstream_fd) {
   return true;
 }
 
-void free_upstream_addrinfo(void) {
+void free_upstream_addrinfo(void)
+{
   if (upstream_addrinfo)
     freeaddrinfo(upstream_addrinfo);
 }
 
-void write_request(Connection *conn) {
+void write_request(Connection *conn)
+{
   if (!conn)
     goto error;
 
@@ -128,21 +135,23 @@ void write_request(Connection *conn) {
 
   while ((upstream->to_write -= write_status) &&
          (write_status =
-              write(upstream->fd, client->buffer + upstream->write_index,
-                    upstream->to_write)) > 0)
+              write(upstream->fd, client->buffer + upstream->write_index, upstream->to_write)) > 0)
     upstream->write_index += write_status;
 
-  if (!write_status) {
+  if (!write_status)
+  {
     err("write", "No write status");
     goto error;
   }
 
-  if (write_status == -1) {
+  if (write_status == -1)
+  {
     if (errno == EINTR && !RUNNING) // shutdown
       NULL;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
       NULL;
-    else {
+    else
+    {
       err("write", strerror(errno));
       goto error;
     }
@@ -158,7 +167,8 @@ error:
   return;
 }
 
-void read_response(Connection *conn) {
+void read_response(Connection *conn)
+{
   if (!conn)
     goto error;
 
@@ -169,7 +179,8 @@ void read_response(Connection *conn) {
 
   // in case continuing to read after dealing with previous response
   if (upstream->next_index)
-    if (!pull_buf(upstream)) {
+    if (!pull_buf(upstream))
+    {
       err("pull_buf", strerror(errno));
       goto error;
     }
@@ -181,16 +192,16 @@ void read_response(Connection *conn) {
   ssize_t read_status = 0;
   size_t max_read = BUFFER_SIZE - upstream->read_index - 1;
 
-  while (
-      (max_read -= read_status) &&
-      (read_status = read(upstream->fd, upstream->buffer + upstream->read_index,
-                          max_read)) > 0) {
+  while ((max_read -= read_status) &&
+         (read_status = read(upstream->fd, upstream->buffer + upstream->read_index, max_read)) > 0)
+  {
     {
       upstream->read_index += read_status;
       upstream->buffer[upstream->read_index] = '\0';
     }
 
-    if (!upstream->headers_found) {
+    if (!upstream->headers_found)
+    {
       if (!parse_headers(conn, &conn->upstream))
         goto error;
 
@@ -198,34 +209,37 @@ void read_response(Connection *conn) {
       // or full response read
       if (upstream->headers_found && !upstream->to_read)
         goto complete;
+    }
+    else if (upstream->content_len)
+    { // bytes left from content len
+      size_t extra =
+          (size_t)read_status > upstream->to_read ? (size_t)read_status - upstream->to_read : 0;
 
-    } else if (upstream->content_len) { // bytes left from content len
-
-      size_t extra = (size_t)read_status > upstream->to_read
-                         ? (size_t)read_status - upstream->to_read
-                         : 0;
-
-      if (extra) {
+      if (extra)
+      {
         upstream->to_read = 0;
         upstream->next_index = upstream->read_index - extra;
-      } else
+      }
+      else
         upstream->to_read -= read_status;
 
       if (!upstream->to_read)
         goto complete;
-
-    } else if (upstream->chunked) { // checking for last chunk, was not received
-                                    // during parse_headers()
+    }
+    else if (upstream->chunked)
+    { // checking for last chunk, was not received during parse_headers()
       if (find_last_chunk(upstream))
         goto complete;
-
-    } else {
+    }
+    else
+    {
       err("verify_upstream_read", "No read condition met. Logic error!");
       goto error;
     }
   }
 
-  if (read_status == 0) { // upstream disconnect
+  if (read_status == 0)
+  { // upstream disconnect
     conn->state = CLOSE_CONN;
     err("read", "EOF received");
     return;
@@ -233,12 +247,14 @@ void read_response(Connection *conn) {
 
   conn->state = WRITE_RESPONSE; // write whats in buffer
 
-  if (read_status == -1) {
+  if (read_status == -1)
+  {
     if (errno == EINTR && !RUNNING) // shutdown
       NULL;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
       NULL;
-    else {
+    else
+    {
       err("read", strerror(errno));
       goto error;
     }
