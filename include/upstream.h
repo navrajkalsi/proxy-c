@@ -16,8 +16,15 @@ bool connect_upstream(int *upstream_fd);
 
 void free_upstream_addrinfo(void);
 
-// writing client request to upstream
-void write_request(Connection *conn);
-
 // reading response from upstream
 void read_response(Connection *conn);
+
+// sending the error status code to client, in case of error during read()
+void handle_error_response(Connection *conn);
+
+bool generate_error_response(Connection *conn);
+
+// to send an error directly without contacting upstream
+bool write_error_response(Connection *conn);
+
+void write_response(Connection *conn);

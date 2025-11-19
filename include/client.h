@@ -3,7 +3,6 @@
 #include <stdbool.h>
 
 #include "connection.h"
-#include "utils.h"
 
 // calls accept on listening socket fd and adds it to the epoll instance
 void accept_client(int proxy_fd);
@@ -18,14 +17,5 @@ bool verify_read(Connection *conn);
 // host header verification
 bool verify_request(Connection *conn);
 
-// sending the error status code to client, in case of error during read()
-void handle_error_response(Connection *conn);
-
-bool generate_error_response(Connection *conn);
-
-// to send an error directly without contacting upstream
-bool write_error_response(Connection *conn);
-
-bool write_str(const Connection *conn, const Str *write);
-
-void write_response(Connection *conn);
+// writing client request to upstream
+void write_request(Connection *conn);

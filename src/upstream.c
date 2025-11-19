@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "connection.h"
+#include "http.h"
 #include "main.h"
 #include "upstream.h"
 #include "utils.h"
@@ -120,53 +121,6 @@ void free_upstream_addrinfo(void)
     freeaddrinfo(upstream_addrinfo);
 }
 
-void write_request(Connection *conn)
-{
-  if (!conn)
-    goto error;
-
-  assert(conn->state == WRITE_REQUEST);
-
-  Endpoint *client = &conn->client, *upstream = &conn->upstream;
-
-  // writing request headers from client buffer to upstream
-  upstream->to_write = client->headers.len - upstream->write_index;
-  ssize_t write_status = 0;
-
-  while ((upstream->to_write -= write_status) &&
-         (write_status =
-              write(upstream->fd, client->buffer + upstream->write_index, upstream->to_write)) > 0)
-    upstream->write_index += write_status;
-
-  if (!write_status)
-  {
-    err("write", "No write status");
-    goto error;
-  }
-
-  if (write_status == -1)
-  {
-    if (errno == EINTR && !RUNNING) // shutdown
-      NULL;
-    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
-      NULL;
-    else
-    {
-      err("write", strerror(errno));
-      goto error;
-    }
-  }
-
-  if (!upstream->to_write) // wait for upstream response, if request is sent
-    conn->state = READ_RESPONSE;
-  return;
-
-error:
-  conn->status = 500;
-  conn->state = WRITE_ERROR;
-  return;
-}
-
 void read_response(Connection *conn)
 {
   if (!conn)
@@ -202,11 +156,10 @@ void read_response(Connection *conn)
 
     if (!upstream->headers_found)
     {
-      if (!parse_headers(conn, &conn->upstream))
+      if (!parse_headers(conn, upstream))
         goto error;
 
-      // no content len or encoding was specified
-      // or full response read
+      // no content len or encoding was specified or full response read
       if (upstream->headers_found && !upstream->to_read)
         goto complete;
     }
@@ -265,6 +218,193 @@ void read_response(Connection *conn)
 complete:
   conn->complete = true;
   conn->state = WRITE_RESPONSE;
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = WRITE_ERROR;
+  return;
+}
+
+void handle_error_response(Connection *conn)
+{
+  if (!conn)
+    return;
+
+  assert(conn->state == WRITE_ERROR);
+  assert(conn->status && conn->status >= 300);
+
+  // every thing response related should use upstream vars
+  if (!generate_error_response(conn))
+  {
+    err("generate_error_response", NULL);
+    char tmp_err[] = "500 Internal Server Error";
+    memcpy(conn->upstream.buffer, tmp_err, sizeof tmp_err);
+  }
+
+  if (!write_error_response(conn))
+    err("write_error_response", NULL);
+
+  // close connection header sent for errors
+  conn->state = CLOSE_CONN;
+}
+
+bool generate_error_response(Connection *conn)
+{
+  if (!conn)
+    return set_efault();
+
+  assert(conn->status >= 300);
+
+  Endpoint *upstream = &conn->upstream;
+
+  char date[DATE_LEN] = {0};
+  if (!set_date_string(date))
+    return err("set_date_string", NULL);
+
+  const Str err_str = get_status_str(conn->status), date_str = {.data = date, .len = DATE_LEN - 1},
+            response_body[] = {STR("<html><head><title>"), err_str,
+                               STR("</title</head><body><center><h1>"), err_str,
+                               STR("</h1></center><hr>center>" SERVER "</center></body>")};
+
+  size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
+
+  for (uint i = 0; i < body_elms; ++i)
+    body_size += response_body[i].len;
+
+  // calculating number of bytes required to hold the final length, will mostly be 3
+  int divisor = 1, num_of_digits = 0;
+  while (body_size / divisor > 0 && ++num_of_digits)
+    divisor *= 10;
+
+  char content_len_data[num_of_digits];
+  memset(content_len_data, 0, num_of_digits);
+
+  int_to_string(body_size, content_len_data);
+  if (!*content_len_data)
+    return err("int_to_string", NULL);
+
+  const Str content_length = {.data = content_len_data, .len = num_of_digits},
+            location = {.data = config.canonical_host,
+                        .len = (ptrdiff_t)strlen(config.canonical_host)},
+            response_headers[] = {STR(FALLBACK_HTTP_VER),
+                                  SPACE_STR,
+                                  err_str,
+                                  STR("\r\nServer: " SERVER "\r\nDate: "),
+                                  date_str,
+                                  STR("\r\nContent-Type: text/html\r\nContent-Length: "),
+                                  content_length,
+                                  STR("\r\nConnection: "),
+                                  STR("close"), // close for errors
+                                  conn->status < 400 ? STR("\r\nLocation: ")
+                                                     : ERR_STR, // location only for redirections
+                                  conn->status < 400 ? location : ERR_STR,
+                                  STR("\r\n\r\n")};
+
+  // collecting all response in upstream_buffer
+  size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
+  for (uint i = 0; i < header_elms; ++i)
+    headers_size += response_headers[i].len;
+
+  if (headers_size + body_size > BUFFER_SIZE)
+    return err("collect_response", "Error response too big");
+
+  ptrdiff_t buf_ptr = 0;
+
+  for (uint i = 0; i < header_elms; ++i)
+  {
+    if (!response_headers[i].len) // skip if ERR_STR
+      continue;
+    memcpy(upstream->buffer + buf_ptr, response_headers[i].data, response_headers[i].len);
+    buf_ptr += response_headers[i].len;
+  }
+  for (uint i = 0; i < body_elms; ++i)
+  {
+    memcpy(upstream->buffer + buf_ptr, response_body[i].data, response_body[i].len);
+    buf_ptr += response_body[i].len;
+  }
+  upstream->buffer[buf_ptr] = '\0';
+  upstream->to_write = (size_t)buf_ptr;
+
+  return true;
+}
+
+bool write_error_response(Connection *conn)
+{
+  if (!conn)
+    return set_efault();
+
+  Endpoint *upstream = &conn->upstream;
+
+  ssize_t write_status = 0;
+
+  while ((upstream->to_write -= write_status) &&
+         (write_status = write(conn->client.fd, upstream->buffer + upstream->write_index,
+                               upstream->to_write)) > 0)
+    upstream->write_index += write_status;
+
+  if (!write_status)
+    return err("write", "No write status");
+
+  if (write_status == -1)
+  {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
+      NULL;
+    else
+      return err("write", strerror(errno));
+  }
+
+  return true;
+}
+
+void write_response(Connection *conn)
+{
+  if (!conn)
+    goto error;
+
+  assert(conn->state == WRITE_RESPONSE);
+
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
+
+  // reset to begin again
+  if (!upstream->to_write)
+    upstream->write_index = 0;
+
+  upstream->to_write = upstream->read_index - upstream->next_index - upstream->write_index;
+  ssize_t write_status = 0;
+
+  while ((upstream->to_write -= write_status) &&
+         (write_status =
+              write(client->fd, upstream->buffer + upstream->write_index, upstream->to_write)) > 0)
+    upstream->write_index += write_status;
+
+  if (!write_status)
+  {
+    err("write", "No write status");
+    goto error;
+  }
+
+  if (write_status == -1)
+  {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
+      NULL;
+    else
+    {
+      err("write", strerror(errno));
+      goto error;
+    }
+  }
+
+  if (!upstream->to_write && !conn->complete)
+    conn->state = READ_RESPONSE;
+
+  if (conn->complete)
+    conn->state = CLOSE_CONN;
+
   return;
 
 error:
