@@ -144,9 +144,9 @@ void read_response(Connection *conn)
   *upstream->buffer = '\0';
 
   ssize_t read_status = 0;
-  size_t max_read = BUFFER_SIZE - upstream->read_index - 1;
+  size_t max_read = BUFFER_SIZE - (size_t)upstream->read_index - 1;
 
-  while ((max_read -= read_status) &&
+  while ((max_read -= (size_t)read_status) &&
          (read_status = read(upstream->fd, upstream->buffer + upstream->read_index, max_read)) > 0)
   {
     {
@@ -171,10 +171,10 @@ void read_response(Connection *conn)
       if (extra)
       {
         upstream->to_read = 0;
-        upstream->next_index = upstream->read_index - extra;
+        upstream->next_index = upstream->read_index - (ptrdiff_t)extra;
       }
       else
-        upstream->to_read -= read_status;
+        upstream->to_read -= (size_t)read_status;
 
       if (!upstream->to_read)
         goto complete;
@@ -270,17 +270,17 @@ bool generate_error_response(Connection *conn)
   size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
 
   for (uint i = 0; i < body_elms; ++i)
-    body_size += response_body[i].len;
+    body_size += (size_t)response_body[i].len;
 
   // calculating number of bytes required to hold the final length, will mostly be 3
-  int divisor = 1, num_of_digits = 0;
+  uint divisor = 1, num_of_digits = 0;
   while (body_size / divisor > 0 && ++num_of_digits)
     divisor *= 10;
 
   char content_len_data[num_of_digits];
   memset(content_len_data, 0, num_of_digits);
 
-  int_to_string(body_size, content_len_data);
+  int_to_string((int)body_size, content_len_data);
   if (!*content_len_data)
     return err("int_to_string", NULL);
 
@@ -304,7 +304,7 @@ bool generate_error_response(Connection *conn)
   // collecting all response in upstream_buffer
   size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
   for (uint i = 0; i < header_elms; ++i)
-    headers_size += response_headers[i].len;
+    headers_size += (size_t)response_headers[i].len;
 
   if (headers_size + body_size > BUFFER_SIZE)
     return err("collect_response", "Error response too big");
@@ -315,12 +315,12 @@ bool generate_error_response(Connection *conn)
   {
     if (!response_headers[i].len) // skip if ERR_STR
       continue;
-    memcpy(upstream->buffer + buf_ptr, response_headers[i].data, response_headers[i].len);
+    memcpy(upstream->buffer + buf_ptr, response_headers[i].data, (size_t)response_headers[i].len);
     buf_ptr += response_headers[i].len;
   }
   for (uint i = 0; i < body_elms; ++i)
   {
-    memcpy(upstream->buffer + buf_ptr, response_body[i].data, response_body[i].len);
+    memcpy(upstream->buffer + buf_ptr, response_body[i].data, (size_t)response_body[i].len);
     buf_ptr += response_body[i].len;
   }
   upstream->buffer[buf_ptr] = '\0';
@@ -338,7 +338,7 @@ bool write_error_response(Connection *conn)
 
   ssize_t write_status = 0;
 
-  while ((upstream->to_write -= write_status) &&
+  while ((upstream->to_write -= (size_t)write_status) &&
          (write_status = write(conn->client.fd, upstream->buffer + upstream->write_index,
                                upstream->to_write)) > 0)
     upstream->write_index += write_status;
@@ -372,10 +372,11 @@ void write_response(Connection *conn)
   if (!upstream->to_write)
     upstream->write_index = 0;
 
-  upstream->to_write = upstream->read_index - upstream->next_index - upstream->write_index;
+  upstream->to_write =
+      (size_t)(upstream->read_index - upstream->next_index - upstream->write_index);
   ssize_t write_status = 0;
 
-  while ((upstream->to_write -= write_status) &&
+  while ((upstream->to_write -= (size_t)write_status) &&
          (write_status =
               write(client->fd, upstream->buffer + upstream->write_index, upstream->to_write)) > 0)
     upstream->write_index += write_status;

@@ -3,7 +3,6 @@
 #include <regex.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <time.h>
 
 // string helper
 typedef struct str

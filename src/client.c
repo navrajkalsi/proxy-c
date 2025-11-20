@@ -115,11 +115,11 @@ void read_request(Connection *conn)
 
       if (extra)
       {
-        client->next_index = client->read_index + client->to_read;
+        client->next_index = client->read_index + (ptrdiff_t)client->to_read;
         client->to_read = 0;
       }
       else
-        client->to_read -= read_status;
+        client->to_read -= (size_t)read_status;
 
       if (!client->to_read)
         goto verify;
@@ -245,10 +245,10 @@ void write_request(Connection *conn)
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
   // writing request headers from client buffer to upstream
-  client->to_write = client->headers.len - client->write_index;
+  client->to_write = (size_t)(client->headers.len - client->write_index);
   ssize_t write_status = 0;
 
-  while ((client->to_write -= write_status) &&
+  while ((client->to_write -= (size_t)write_status) &&
          (write_status =
               write(upstream->fd, client->buffer + client->write_index, client->to_write)) > 0)
     client->write_index += write_status;

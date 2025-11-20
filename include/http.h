@@ -30,6 +30,6 @@ void set_connection(const char *buffer, Connection *conn);
 // for logging request to stdout
 void print_request(const Connection *conn);
 
-char *get_status_string(int status_code);
+char *get_status_string(uint status_code);
 
-Str get_status_str(int status_code);
+Str get_status_str(uint status_code);

@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <regex.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +35,7 @@ bool validate_host(const Str *header)
 
   // comparing it to the upstream
   // last '/' is optional
-  size_t to_compare = *--org_ptr == '/' ? header->len - 1 : header->len;
+  size_t to_compare = *--org_ptr == '/' ? (size_t)header->len - 1 : (size_t)header->len;
 
   if (strlen(config.canonical_host) < to_compare ||
       memcmp(header->data, config.canonical_host, to_compare) != 0)
@@ -162,7 +163,7 @@ void print_request(const Connection *conn)
   // verify if http struct is really needed
 }
 
-char *get_status_string(int status_code)
+char *get_status_string(uint status_code)
 {
   // these strings live for the entire life of the program
   switch (status_code)
@@ -192,7 +193,7 @@ char *get_status_string(int status_code)
   return "500 Internal Server Error";
 }
 
-Str get_status_str(int status_code)
+Str get_status_str(uint status_code)
 {
   // these strings live for the entire life of the program
   switch (status_code)

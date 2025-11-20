@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,7 +131,7 @@ bool add_to_epoll(Connection *conn, int fd, int flags)
 {
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
-  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)conn};
+  struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
 
   if (fd == -1)
     return err("get_target_fd", "Socket is probably being added to epoll before "
@@ -144,7 +145,7 @@ bool add_to_epoll(Connection *conn, int fd, int flags)
 
 bool mod_in_epoll(Connection *conn, int fd, int flags)
 {
-  struct epoll_event epoll_event = {.events = flags, .data.ptr = (void *)conn};
+  struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
 
   if (fd == -1)
     return err("get_target_fd", "Socket fd is not initialized, logic error");
@@ -176,10 +177,10 @@ bool pull_buf(Endpoint *endpoint)
 
   assert(endpoint->read_index > endpoint->next_index);
 
-  size_t to_copy = endpoint->read_index - endpoint->next_index;
+  size_t to_copy = (size_t)(endpoint->read_index - endpoint->next_index);
   memcpy(endpoint->buffer, endpoint->buffer + endpoint->next_index, to_copy);
-  endpoint->read_index = to_copy;
-  endpoint->to_read = BUFFER_SIZE - endpoint->read_index - 1;
+  endpoint->read_index = (ptrdiff_t)to_copy;
+  endpoint->to_read = BUFFER_SIZE - (size_t)endpoint->read_index - 1;
   endpoint->next_index = 0;
 
   endpoint->headers_found = false;
@@ -252,7 +253,7 @@ bool find_last_chunk(Endpoint *endpoint)
   size_t read_size = strlen(start), // num of chars available to check at most
       to_match =
           read_size < (size_t)LAST_CHUNK_STR.len - 1 ? read_size : (size_t)LAST_CHUNK_STR.len - 1;
-  ptrdiff_t match_index = read_size - to_match;
+  ptrdiff_t match_index = (ptrdiff_t)(read_size - to_match);
   matched = 0;
 
   // checking if 0 is received, only using last to_match bytes
@@ -329,9 +330,9 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
       }
 
     // a null terminated str for atoi()
-    char *temp = strndup(content_len_str->data, content_len_str->len);
-    endpoint->content_len = atoi(temp);
-    free(temp);
+    char *tmp = strndup(content_len_str->data, (size_t)content_len_str->len);
+    endpoint->content_len = (size_t)atoi(tmp);
+    free(tmp);
 
     if (!endpoint->content_len) // empty body
       goto read_complete;
@@ -342,18 +343,18 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
       return err("verify_content_len", "Content too large");
     }
 
-    size_t full_size = endpoint->headers.len + endpoint->content_len;
+    size_t full_size = (size_t)endpoint->headers.len + endpoint->content_len;
 
     if (full_size == (size_t)endpoint->read_index) // body read already, but nothing else
       goto read_complete;
 
     if (full_size < (size_t)endpoint->read_index)
-    {                                       // body read and another request
-      endpoint->next_index = full_size + 1; // will be copied to the start for next read
+    {                                                  // body read and another request
+      endpoint->next_index = (ptrdiff_t)full_size + 1; // will be copied to the start for next read
       goto read_complete;
     }
 
-    endpoint->to_read = full_size - endpoint->read_index;
+    endpoint->to_read = full_size - (size_t)endpoint->read_index;
 
     if (client) // no need to store body for client
       goto disregard_body;
