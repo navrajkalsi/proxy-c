@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <assert.h>
-#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <regex.h>

@@ -10,54 +10,20 @@
 #include "proxy.h"
 #include "utils.h"
 
-Str str_data_malloc(const char *in) {
-  return !in ? ERR_STR
-             : (Str){.data = strdup(in), .len = (ptrdiff_t)strlen(in)};
-}
-
-Str *str_malloc(const char *in) {
-  Str *ret = (Str *)malloc(sizeof *ret);
-
-  if (!ret) {
-    err("malloc", strerror(errno));
-    return NULL;
-  }
-
-  ret->data = in ? strdup(in) : NULL;
-  ret->len = in ? (ptrdiff_t)strlen(in) : 0;
-
-  return ret;
-}
-
-void str_data_free(Str *in) {
-  if (!in || !in->data || !in->len)
-    return;
-
-  free(in->data);
-  in->data = NULL;
-  in->len = 0;
-}
-
-void str_free(Str **in) {
-  if (!in || !*in)
-    return;
-
-  str_data_free(*in);
-  free(*in);
-  *in = NULL;
-}
-
-void str_print(const Str *in) {
+void str_print(const Str *in)
+{
   if (in)
     printf("%.*s\n", (int)in->len, in->data);
 }
 
-bool equals(const Str a, const Str b) {
+bool equals(const Str a, const Str b)
+{
   return a.len == b.len && !memcmp(a.data, b.data, (size_t)(a.len));
 }
 
 // returns 0 len str in case of error
-Str takehead(Str str, ptrdiff_t take) {
+Str takehead(Str str, ptrdiff_t take)
+{
   if (!str.data || str.len < 0)
     return ERR_STR;
 
@@ -65,7 +31,8 @@ Str takehead(Str str, ptrdiff_t take) {
   return str;
 }
 
-Str drophead(Str str, ptrdiff_t drop) {
+Str drophead(Str str, ptrdiff_t drop)
+{
   if (!str.data || str.len < 0 || drop > str.len)
     return ERR_STR;
 
@@ -74,7 +41,8 @@ Str drophead(Str str, ptrdiff_t drop) {
   return str;
 }
 
-Cut cut(Str str, char sep) {
+Cut cut(Str str, char sep)
+{
   ptrdiff_t pos = 0;
 
   while (pos < str.len && str.data[pos] != sep)
@@ -88,7 +56,8 @@ Cut cut(Str str, char sep) {
   return ret;
 }
 
-ptrdiff_t contains(const Str *str, const char *chars) {
+ptrdiff_t contains(const Str *str, const char *chars)
+{
   ptrdiff_t len = (ptrdiff_t)strlen(chars);
   if (!str->len || !str->data || !len || len > str->len)
     return -1;
@@ -100,94 +69,8 @@ ptrdiff_t contains(const Str *str, const char *chars) {
   return -1;
 }
 
-// error linked list head and tail nodes
-ErrorNode *error_head = NULL, *error_tail = NULL;
-
-ErrorNode *init_error_node(const char *function, const char *error) {
-  ErrorNode *node;
-
-  if (!(node = malloc(sizeof(ErrorNode)))) {
-    err("malloc", strerror(errno));
-    return NULL;
-  }
-
-  node->function = function ? strdup(function) : NULL;
-  node->error = error && strcmp(error, "Success") ? strdup(error) : NULL;
-  node->time = time(NULL);
-  node->next = NULL;
-
-  return node;
-}
-
-bool enqueue_error(const char *function, const char *error) {
-  if (!function)
-    return false;
-
-  ErrorNode *node;
-  if (!(node = init_error_node(function, error)))
-    return err("init_error_node", NULL);
-
-  // adding to the list
-  if (error_tail)
-    error_tail = error_tail->next = node;
-  else
-    error_head = error_tail = node;
-
-  return false;
-}
-
-void print_error_list(void) {
-  if (!error_head)
-    return;
-
-  {
-    fputs("\n", stderr);
-    for (int i = 0; i < TERMINAL_WIDTH; ++i)
-      fputs("~", stderr);
-    fputs("\nError Queue:\n\n", stderr);
-  }
-
-  ErrorNode *current = error_head;
-  do {
-    struct tm *time = localtime(&current->time);
-
-    // zero padding with fixed width of 2 in time
-    fprintf(stderr, "[%02d:%02d:%02d] %s()", time->tm_hour, time->tm_min,
-            time->tm_sec, current->function);
-    if (current->error)
-      fprintf(stderr, ": %s\n", current->error);
-    else
-      fputs("\n", stderr);
-  } while ((current = current->next));
-
-  for (int i = 0; i < TERMINAL_WIDTH; ++i)
-    fputs("~", stderr);
-  puts("\n");
-}
-
-void free_error_list(void) {
-  if (!error_head)
-    return;
-
-  ErrorNode *current = error_head;
-
-  do {
-    ErrorNode *next = current->next;
-
-    if (current->function)
-      free(current->function);
-    if (current->error)
-      free(current->error);
-
-    free(current);
-    current = next;
-
-  } while (current);
-
-  error_head = error_tail = NULL;
-}
-
-bool err(const char *function, const char *error) {
+bool err(const char *function, const char *error)
+{
   if (function && error && strcmp(error, strerror(0)))
     fprintf(stderr, "\033[1;31m%s()\033[0m: %s\n", function, error);
   else if (function)
@@ -198,7 +81,8 @@ bool err(const char *function, const char *error) {
   return false;
 }
 
-bool warn(const char *function, const char *warning) {
+bool warn(const char *function, const char *warning)
+{
   if (function && warning)
     fprintf(stderr, "\033[1;33m%s()\033[0m: %s\n", function, warning);
   else if (function)
@@ -211,12 +95,14 @@ bool warn(const char *function, const char *warning) {
 
 bool null_ptr(const char *error) { return err(error, strerror(EFAULT)); }
 
-bool set_efault() {
+bool set_efault()
+{
   errno = EFAULT;
   return false;
 }
 
-bool setup_sig_handler(void) {
+bool setup_sig_handler(void)
+{
   struct sigaction sa_shutdown, sa_pipe;
 
   // Shutdown
@@ -232,28 +118,30 @@ bool setup_sig_handler(void) {
   // SIGINT (signal interput) is sent when Ctrl+C is pressed
   // SIGTERM (signal terminate) is sent when the process is killed from like
   // terminal with kill command
-  if (sigaction(SIGINT, &sa_shutdown, NULL) == -1 ||
-      sigaction(SIGTERM, &sa_shutdown, NULL) == -1 ||
+  if (sigaction(SIGINT, &sa_shutdown, NULL) == -1 || sigaction(SIGTERM, &sa_shutdown, NULL) == -1 ||
       sigaction(SIGPIPE, &sa_pipe, NULL) == -1)
     return err("sigaction", strerror(errno));
 
   return true;
 }
 
-void handle_shutdown(int sig) {
+void handle_shutdown(int sig)
+{
   (void)sig;
   puts("\nReceived kill signal");
   RUNNING = false;
   return;
 }
 
-void handle_sigpipe(int sig) {
+void handle_sigpipe(int sig)
+{
   (void)sig;
   puts("\nReceived SIGPIPE signal");
   return;
 }
 
-void print_active_num(void) {
+void print_active_num(void)
+{
   int active = 0;
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
     if (active_conns[i])
@@ -263,10 +151,10 @@ void print_active_num(void) {
 }
 
 // does not handle 0 & only works for positive num
-void int_to_string(int num, char *out) {
-  static ptrdiff_t pos =
-      0; // the chars have to be written from the beginning, therefore this
-         // would serve as the index where the char would go
+void int_to_string(int num, char *out)
+{
+  static ptrdiff_t pos = 0; // the chars have to be written from the beginning, therefore this
+                            // would serve as the index where the char would go
 
   pos = 0; // may have a value from previous calls
 
@@ -278,13 +166,14 @@ void int_to_string(int num, char *out) {
   *(out + pos++) = (char)((num % 10) + '0');
 }
 
-bool compile_regex() {
+bool compile_regex()
+{
   memset(&origin_regex, 0, sizeof origin_regex);
   int status = 0;
   char error_string[256];
 
-  if ((status = regcomp(&origin_regex, ORIGIN_REGEX,
-                        REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0) {
+  if ((status = regcomp(&origin_regex, ORIGIN_REGEX, REG_EXTENDED | REG_NOSUB | REG_ICASE)) != 0)
+  {
     regerror(status, &origin_regex, error_string, sizeof error_string);
     return err("regcomp", error_string);
   }
@@ -292,14 +181,16 @@ bool compile_regex() {
   return true;
 }
 
-bool exec_regex(const regex_t *regex, const char *match) {
+bool exec_regex(const regex_t *regex, const char *match)
+{
   if (!regex || !match)
     return set_efault();
 
   int status = 0;
   char error_string[256];
 
-  if ((status = regexec(regex, match, 0, NULL, 0)) != 0) {
+  if ((status = regexec(regex, match, 0, NULL, 0)) != 0)
+  {
     regerror(status, regex, error_string, sizeof error_string);
     return err("regexec", error_string);
   }

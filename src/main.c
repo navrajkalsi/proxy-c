@@ -17,8 +17,10 @@ Config config = {.port = NULL, .accept_all = false, .upstream = NULL};
 int EPOLL_FD = -1;
 regex_t origin_regex;
 
-int main(int argc, char *argv[]) {
-  if (!setup_sig_handler()) {
+int main(int argc, char *argv[])
+{
+  if (!setup_sig_handler())
+  {
     err("setup_sig_handler", strerror(errno));
     return -1;
   }
@@ -30,28 +32,33 @@ int main(int argc, char *argv[]) {
 
   int proxy_fd = -1;
 
-  if (!setup_proxy(&config, &proxy_fd)) {
+  if (!setup_proxy(&config, &proxy_fd))
+  {
     err("setup_proxy", NULL);
     return -1;
   }
 
-  if (!setup_epoll(proxy_fd)) {
+  if (!setup_epoll(proxy_fd))
+  {
     err("setup_epoll", NULL);
     return -1;
   }
 
-  if (EPOLL_FD == -1) {
+  if (EPOLL_FD == -1)
+  {
     err("verify_epoll_fd", "Epoll fd is not valid");
     return -1;
   }
 
   // loading server info, into global var in proxy.c
-  if (!setup_upstream(config.upstream)) {
+  if (!setup_upstream(config.upstream))
+  {
     err("setup_upstream", NULL);
     return -1;
   }
 
-  if (!start_proxy()) {
+  if (!start_proxy())
+  {
     err("start_proxy", strerror(errno));
     return -1;
   }

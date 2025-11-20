@@ -22,16 +22,9 @@ typedef enum
   CLOSE_CONN
 } State;
 
-typedef enum
-{
-  CLIENT,
-  UPSTREAM
-} EndpointType;
-
 typedef struct endpoint
 {
   char buffer[BUFFER_SIZE];
-  EndpointType type;
   int fd;
   Str headers;           // buffer may contain more bytes than this
   ptrdiff_t read_index;  // where to start reading again

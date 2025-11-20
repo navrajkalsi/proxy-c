@@ -41,10 +41,8 @@ Connection *init_conn(void)
   client->next_index = upstream->next_index = 0;
 
   client->headers.data = client->buffer; // initally request points to beginning of the buffer
-  client->type = CLIENT;
 
   upstream->headers.data = upstream->buffer;
-  upstream->type = UPSTREAM;
 
   reset_conn(conn);
 
@@ -297,7 +295,7 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
   char *headers_end = NULL;
   if (!(headers_end = strstr(endpoint->buffer, TRAILER)))
   {
-    if (endpoint->read_index >= BUFFER_SIZE - 1)
+    if ((size_t)endpoint->read_index >= BUFFER_SIZE - 1)
     { // no space left
       conn->status = client ? 431 : 500;
       return err("strstr", "Headers too large");

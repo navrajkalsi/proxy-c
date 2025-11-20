@@ -14,7 +14,8 @@
 #include "main.h"
 #include "utils.h"
 
-bool validate_host(const Str *header) {
+bool validate_host(const Str *header)
+{
   if (!header)
     return set_efault();
 
@@ -44,7 +45,8 @@ bool validate_host(const Str *header) {
 
 bool validate_method(const Str method) { return equals(method, STR("GET")); }
 
-bool validate_http(const Str http_ver) {
+bool validate_http(const Str http_ver)
+{
   if (equals(http_ver, STR("HTTP/1.0")) || equals(http_ver, STR("HTTP/1.1")) ||
       equals(http_ver, STR("HTTP/2")) || equals(http_ver, STR("HTTP/3")))
     return true;
@@ -52,8 +54,8 @@ bool validate_http(const Str http_ver) {
   return false;
 }
 
-bool get_header_value(const char *headers, const char *header_name,
-                      Str *header_value) {
+bool get_header_value(const char *headers, const char *header_name, Str *header_value)
+{
   if (!header_name || !headers || !header_value)
     return set_efault();
 
@@ -63,7 +65,8 @@ bool get_header_value(const char *headers, const char *header_name,
   // there may be other occurrences of the header name in the header values
   // standard says each header name should follow immediately with a ':'
   // if it does not then finding next match
-  while ((header_start = strcasestr(headers, header_name))) {
+  while ((header_start = strcasestr(headers, header_name)))
+  {
     // moving request to end of the header name
     headers = header_start += strlen(header_name);
     if (*header_start == ':')
@@ -86,7 +89,8 @@ bool get_header_value(const char *headers, const char *header_name,
   return true;
 }
 
-bool set_date_str(Str *date) {
+bool set_date_str(Str *date)
+{
   if (!date || !date->data)
     return set_efault();
 
@@ -97,11 +101,11 @@ bool set_date_str(Str *date) {
   gmtime_r(&now, &tm);
 
   // strftime returns 0 if write buffer is small
-  return (bool)strftime(date->data, (size_t)DATE_LEN,
-                        "%a, %d %b %Y %H:%M:%S GMT", &tm);
+  return (bool)strftime(date->data, (size_t)DATE_LEN, "%a, %d %b %Y %H:%M:%S GMT", &tm);
 }
 
-bool set_date_string(char *date) {
+bool set_date_string(char *date)
+{
   if (!date)
     return set_efault();
 
@@ -110,11 +114,11 @@ bool set_date_string(char *date) {
   gmtime_r(&now, &tm);
 
   // strftime returns 0 if write buffer is small
-  return (bool)strftime(date, (size_t)DATE_LEN, "%a, %d %b %Y %H:%M:%S GMT",
-                        &tm);
+  return (bool)strftime(date, (size_t)DATE_LEN, "%a, %d %b %Y %H:%M:%S GMT", &tm);
 }
 
-void set_connection(const char *buffer, Connection *conn) {
+void set_connection(const char *buffer, Connection *conn)
+{
   if (!buffer || !conn)
     return;
 
@@ -123,14 +127,14 @@ void set_connection(const char *buffer, Connection *conn) {
   else
     warn("get_header_value", "Connection header not found");
 
-  if (equals(conn->http_ver, STR("HTTP/1.0")) ||
-      equals(conn->http_ver, STR("HTTP/0.9")))
+  if (equals(conn->http_ver, STR("HTTP/1.0")) || equals(conn->http_ver, STR("HTTP/0.9")))
     conn->connection = STR("close");
   else
     conn->connection = STR("keep-alive");
 }
 
-void print_request(const Connection *conn) {
+void print_request(const Connection *conn)
+{
   if (!conn)
     return;
 
@@ -140,15 +144,13 @@ void print_request(const Connection *conn) {
     return;
 
   char ip_str[INET6_ADDRSTRLEN];
-  if (!inet_ntop(AF_INET6,
-                 &(((struct sockaddr_in6 *)&conn->client_addr)->sin6_addr),
-                 ip_str, sizeof ip_str))
+  if (!inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)&conn->client_addr)->sin6_addr), ip_str,
+                 sizeof ip_str))
     err("inet_ntop", strerror(errno));
   else
     printf("\n(%s) ", ip_str);
 
-  while (*request_line != '\r' && *request_line != '\n' &&
-         *request_line != '\0')
+  while (*request_line != '\r' && *request_line != '\n' && *request_line != '\0')
     putchar(*request_line++);
 
   putchar(' ');
@@ -160,9 +162,11 @@ void print_request(const Connection *conn) {
   // verify if http struct is really needed
 }
 
-char *get_status_string(int status_code) {
+char *get_status_string(int status_code)
+{
   // these strings live for the entire life of the program
-  switch (status_code) {
+  switch (status_code)
+  {
   case 200:
     return "200 OK";
   case 301:
@@ -188,9 +192,11 @@ char *get_status_string(int status_code) {
   return "500 Internal Server Error";
 }
 
-Str get_status_str(int status_code) {
+Str get_status_str(int status_code)
+{
   // these strings live for the entire life of the program
-  switch (status_code) {
+  switch (status_code)
+  {
   case 200:
     return STR("200 OK");
   case 301:
