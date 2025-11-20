@@ -52,7 +52,6 @@ typedef struct connection
   Endpoint upstream;
 
   Str http_ver;
-  Str connection; // connection header
   Str path;
   Str host;
 
@@ -62,6 +61,7 @@ typedef struct connection
 
   uint status;   // http status code
   bool complete; // full response received and sent
+  bool keep_alive;
 
   struct connection **self_ptr; // this will be an element of active_conns array, used to
                                 // deactive/remove from active_conns(just make this NULL)

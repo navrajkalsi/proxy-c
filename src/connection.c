@@ -107,9 +107,9 @@ void reset_conn(Connection *conn)
   conn->status = 0;
   conn->proxy_fd = -1;
   conn->http_ver = STR(FALLBACK_HTTP_VER);
-  conn->connection = ERR_STR;
   conn->host = ERR_STR;
   conn->path = ERR_STR;
+  conn->keep_alive = false;
   conn->complete = false;
 }
 
@@ -311,12 +311,37 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
   endpoint->headers.data = endpoint->buffer;
   endpoint->headers.len = headers_end - endpoint->buffer;
 
+  str_print(&endpoint->headers);
+
   // tmp null termination for get_header_value(), so I do not get to the next
   // request or search for the header in the body (if read)
   char org_char = *headers_end;
   *headers_end = '\0';
 
   Str misc = ERR_STR; // misc str to contain the header value
+
+  if (get_header_value(endpoint->buffer, "Connection", &misc))
+  {
+    Str *conn_header = &misc;
+
+    if (equals(*conn_header, STR("close"))) // close if either side wants to close
+      conn->keep_alive = false;
+    else if (equals(*conn_header, STR("keep-alive")))
+    {
+      if (client)
+        conn->keep_alive = true;
+      else // only keep alive if client also want to
+        conn->keep_alive = conn->keep_alive ? true : false;
+    }
+    else
+    {
+      *headers_end = org_char;
+      conn->status = client ? 400 : 500;
+      return err("verify_connection_header", "Invalid connection header value");
+    }
+  }
+
+  misc = ERR_STR;
   if (get_header_value(endpoint->buffer, "Content-Length", &misc))
   {
     *headers_end = org_char;
@@ -385,10 +410,7 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
     return true;
   }
   else
-  {
     *headers_end = org_char;
-    goto read_complete;
-  }
 
 read_complete:
   endpoint->to_read = 0;
