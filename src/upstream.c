@@ -131,13 +131,12 @@ void read_response(Connection *conn)
 
   Endpoint *upstream = &conn->upstream;
 
-  // in case continuing to read after dealing with previous response
+  // should not have next index, reset by reset_conn()
   if (upstream->next_index)
-    if (!pull_buf(upstream))
-    {
-      err("pull_buf", strerror(errno));
-      goto error;
-    }
+  {
+    err("verify_next_index", "Next index not reset. Logic error!");
+    goto error;
+  }
 
   // must have written the buffer to client in full, before reading again
   upstream->read_index = 0;
@@ -404,7 +403,7 @@ void write_response(Connection *conn)
     conn->state = READ_RESPONSE;
 
   if (conn->complete)
-    conn->state = CLOSE_CONN;
+    conn->state = CHECK_CONN;
 
   return;
 

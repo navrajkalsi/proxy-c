@@ -18,7 +18,7 @@ typedef enum
   WRITE_REQUEST,
   READ_RESPONSE,
   WRITE_RESPONSE,
-  RESET_CONN,
+  CHECK_CONN,
   CLOSE_CONN
 } State;
 
@@ -38,6 +38,7 @@ typedef struct endpoint
                          // current request, stop reading if new request is
                          // detected, in case of client
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was
+  time_t timeout;
   // read
 } Endpoint;
 
@@ -94,7 +95,7 @@ bool mod_in_epoll(Connection *conn, int fd, int flags);
 bool del_from_epoll(int fd);
 
 // copies bytes from next_index to starting of buffer till read_index & sets read index accordingly
-bool pull_buf(Endpoint *endpoint);
+void pull_buf(Endpoint *endpoint);
 
 // dynamically checks for last_chunk (fragmented or full) depending on the
 // chars in endpoint.last_chunk_found
@@ -104,3 +105,6 @@ bool find_last_chunk(Endpoint *endpoint);
 
 // parsing common headers for both client and upstream only call once per request/response
 bool parse_headers(Connection *conn, Endpoint *endpoint);
+
+// used to continue the conn, if keep alive is true
+void check_conn(Connection *conn);

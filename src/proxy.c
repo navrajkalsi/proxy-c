@@ -130,9 +130,8 @@ bool setup_epoll(int proxy_fd)
 bool start_proxy(void)
 {
   int ready_events = -1;
-  struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the
-                                               // fds that are ready with their
-                                               // respective operation type
+  struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the fds that are ready
+                                               // with their respective operation type
 
   while (RUNNING)
   {
@@ -160,8 +159,7 @@ bool start_proxy(void)
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
         read_request(conn);
 
-      else if (conn->state == WRITE_ERROR &&
-               events & EPOLLOUT) // error during read, do not contact upstream
+      else if (conn->state == WRITE_ERROR && events & EPOLLOUT) // write error without upstream
         handle_error_response(conn);
 
       else if (conn->state == WRITE_REQUEST && events & EPOLLOUT) // send to upstream
@@ -213,7 +211,9 @@ again:
     break;
 
   case VERIFY_REQUEST:
-    if (verify_request(conn))
+    if (conn->upstream.fd >= 0) // if reusing a upstream from previous res
+      conn->state = WRITE_REQUEST;
+    else if (verify_request(conn))
       conn->state = CONNECT_UPSTREAM;
     else
       conn->state = WRITE_ERROR;
@@ -249,9 +249,9 @@ again:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
     break;
 
-  case RESET_CONN:
-    reset_conn(conn);
-    break;
+  case CHECK_CONN:
+    check_conn(conn);
+    goto again;
 
   case CLOSE_CONN:
     // TODO: free resources
@@ -305,8 +305,8 @@ void log_state(int state)
   case WRITE_RESPONSE:
     puts("write_response");
     break;
-  case RESET_CONN:
-    puts("reset_conn");
+  case CHECK_CONN:
+    puts("check_conn");
     break;
   case CLOSE_CONN:
     puts("close_conn");

@@ -123,15 +123,16 @@ void set_connection(const char *buffer, Connection *conn)
   if (!buffer || !conn)
     return;
 
-  if (get_header_value(buffer, "Connection", &conn->connection))
+  Str conn_header = ERR_STR;
+  if (get_header_value(buffer, "Connection", &conn_header))
     return;
   else
     warn("get_header_value", "Connection header not found");
 
   if (equals(conn->http_ver, STR("HTTP/1.0")) || equals(conn->http_ver, STR("HTTP/0.9")))
-    conn->connection = STR("close");
+    conn->keep_alive = false;
   else
-    conn->connection = STR("keep-alive");
+    conn->keep_alive = true;
 }
 
 void print_request(const Connection *conn)

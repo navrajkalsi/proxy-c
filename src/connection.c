@@ -38,7 +38,6 @@ Connection *init_conn(void)
 
   // same vars across client and upstream
   client->fd = upstream->fd = -1;
-  client->read_index = upstream->read_index = 0;
   client->next_index = upstream->next_index = 0;
 
   client->headers.data = client->buffer; // initally request points to beginning of the buffer
@@ -96,7 +95,12 @@ void reset_conn(Connection *conn)
 
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
+  pull_buf(client);
+  pull_buf(upstream);
+
   client->headers.len = upstream->headers.len = 0;
+  client->read_index = upstream->read_index = 0;
+  client->write_index = upstream->write_index = 0;
   client->to_read = upstream->to_read = BUFFER_SIZE - 1;
   client->to_write = upstream->to_write = 0;
   client->content_len = upstream->content_len = 0;
@@ -167,13 +171,10 @@ bool del_from_epoll(int fd)
   return true;
 }
 
-bool pull_buf(Endpoint *endpoint)
+void pull_buf(Endpoint *endpoint)
 {
-  if (!endpoint)
-    return set_efault();
-
-  if (!endpoint->next_index) // nothing to do, read new request/response
-    return true;
+  if (!endpoint || !endpoint->next_index)
+    return;
 
   assert(endpoint->read_index > endpoint->next_index);
 
@@ -184,8 +185,6 @@ bool pull_buf(Endpoint *endpoint)
   endpoint->next_index = 0;
 
   endpoint->headers_found = false;
-
-  return true;
 }
 
 bool find_last_chunk(Endpoint *endpoint)
@@ -419,4 +418,18 @@ read_complete:
 disregard_body:
   endpoint->read_index = endpoint->headers.len;
   return true;
+}
+
+void check_conn(Connection *conn)
+{
+  if (!conn)
+    return;
+
+  assert(conn->state == CHECK_CONN);
+  assert(conn->complete);
+
+  if (conn->keep_alive)
+    reset_conn(conn); // start to read again from client
+  else
+    conn->state = CLOSE_CONN;
 }

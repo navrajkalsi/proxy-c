@@ -82,13 +82,12 @@ void read_request(Connection *conn)
 
   Endpoint *client = &conn->client;
 
-  // in case continuing to read after dealing with previous request
+  // should not have next index, reset by reset_conn()
   if (client->next_index)
-    if (!pull_buf(client))
-    {
-      err("pull_buf", strerror(errno));
-      goto error;
-    }
+  {
+    err("verify_next_index", "Next index not reset. Logic error!");
+    goto error;
+  }
 
   ssize_t read_status = 0;
 
@@ -96,6 +95,9 @@ void read_request(Connection *conn)
   while (client->to_read &&
          (read_status = read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
   {
+    printf("read_status: %zd\n", read_status);
+    printf("read_index: %zd\n", client->read_index);
+
     client->buffer[client->read_index + read_status] = '\0';
     client->read_index += client->headers_found ? 0 : read_status;
 
