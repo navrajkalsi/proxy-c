@@ -48,7 +48,7 @@
 #define MAX_CONNECTIONS 256
 #define FALLBACK_UPSTREAM_PORT "80" // change this to 443 after SSL
 
-// request.h specific
+// client.h specific
 #define TRAILER "\r\n\r\n"
 #define LINEBREAK "\r\n"
 #define SPACE " "

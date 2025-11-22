@@ -2,10 +2,6 @@
 
 #include "connection.h"
 
-// global array of conn structs that were added to the epoll table
-// init & free conn() add and remove from this array automatically
-extern Connection *active_conns[MAX_CONNECTIONS];
-
 extern int EPOLL_FD;
 
 bool setup_proxy(Config *config, int *proxy_fd);

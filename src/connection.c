@@ -16,6 +16,11 @@
 #include "proxy.h"
 #include "utils.h"
 
+Connection *active_conns[MAX_CONNECTIONS] = {0};
+
+Connection *timeouts_head = NULL;
+Connection *timeouts_tail = NULL;
+
 Connection *init_conn(void)
 {
   Connection *conn;
@@ -43,6 +48,9 @@ Connection *init_conn(void)
   client->headers.data = client->buffer; // initally request points to beginning of the buffer
 
   upstream->headers.data = upstream->buffer;
+
+  conn->ttl = 0;
+  conn->next_timeout = NULL;
 
   reset_conn(conn);
 
@@ -432,4 +440,66 @@ void check_conn(Connection *conn)
     reset_conn(conn); // start to read again from client
   else
     conn->state = CLOSE_CONN;
+}
+
+void refresh_timeouts(time_t ttl)
+{
+  if (!timeouts_head || ttl <= 0)
+    return;
+
+  for (Connection *current = timeouts_head; current; current = current->next_timeout)
+    current->ttl -= current->ttl > ttl ? ttl : current->ttl;
+}
+
+void enqueue_timeout(Connection *conn)
+{
+  if (!conn)
+    return;
+
+  Connection *current = timeouts_head;
+
+  if (!current) // new start
+    timeouts_head = timeouts_tail = conn;
+  else if (conn->ttl >= timeouts_tail->ttl)
+  { // insert at end
+    timeouts_tail->next_timeout = conn;
+    timeouts_tail = conn;
+  }
+  else
+    while (true)
+    { // look for nearest ttl
+      if (current->next_timeout && conn->ttl > current->next_timeout->ttl)
+        continue;
+
+      if (!current->next_timeout)
+        timeouts_tail = conn;
+
+      conn->next_timeout = current->next_timeout;
+      current->next_timeout = conn;
+      break;
+    }
+}
+
+Connection *dequeue_timeout(void)
+{ // refresh timeouts before calling!
+  if (!timeouts_head || timeouts_head->ttl > 0)
+    return NULL;
+
+  Connection *ret = timeouts_head;
+  timeouts_head = timeouts_head->next_timeout;
+  if (!timeouts_head)
+    timeouts_tail = NULL;
+
+  return ret;
+}
+
+void clear_expired(void)
+{
+  Connection *current = NULL;
+
+  while ((current = dequeue_timeout()))
+  {
+    current->state = CLOSE_CONN;
+    handle_state(current);
+  }
 }

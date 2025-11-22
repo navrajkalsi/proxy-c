@@ -1,9 +1,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "client.h"
@@ -13,8 +15,6 @@
 #include "proxy.h"
 #include "upstream.h"
 #include "utils.h"
-
-Connection *active_conns[MAX_CONNECTIONS] = {0};
 
 bool setup_proxy(Config *config, int *proxy_fd)
 {
@@ -133,9 +133,17 @@ bool start_proxy(void)
   struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the fds that are ready
                                                // with their respective operation type
 
+  time_t last_refresh = time(NULL), waited = 0; // now
+
   while (RUNNING)
   {
-    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, -1)) == -1)
+    waited = time(NULL) - last_refresh;
+    refresh_timeouts(waited); // safe to use as is for starting of the proxy
+    last_refresh += waited;
+    printf("waited1: %jd\n", (intmax_t)waited);
+
+    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS,
+                                   timeouts_head ? (int)timeouts_head->ttl : -1)) == -1)
     {
       if (errno == EINTR && !RUNNING) // ctrl c for example, will not work if
                                       // sighandler is not used first
@@ -144,6 +152,12 @@ bool start_proxy(void)
 
       return err("epoll_wait", strerror(errno));
     }
+
+    waited = time(NULL) - last_refresh; // how long did epoll_wait block for
+    refresh_timeouts(waited);
+    last_refresh += waited;
+    printf("waited2: %jd\n", (intmax_t)waited);
+    clear_expired();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
