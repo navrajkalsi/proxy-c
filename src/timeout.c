@@ -13,7 +13,7 @@ const int TimeoutVals[TIMEOUTTYPES] = {10, 5, 20, 5, 30};
 
 Timeout *timeouts_head = NULL, *timeouts_tail = NULL;
 
-Timeout *init_timeout(Connection *conn, TimeoutType type, time_t ttl)
+Timeout *init_timeout(Connection *conn, TimeoutType type)
 {
   if (!conn)
   {
@@ -121,4 +121,11 @@ void clear_expired(void)
   {
     puts("cleared");
   }
+}
+
+void delete_timeout(Timeout *timeout)
+{
+  (void)timeout;
+  // implement with pointer
+  return;
 }
