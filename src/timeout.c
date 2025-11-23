@@ -110,6 +110,9 @@ Timeout *dequeue_timeout(void)
   if (!timeouts_head)
     timeouts_tail = NULL;
 
+  // remove from timeouts array of conn
+  timeout->conn->timeouts[timeout->type] = NULL;
+
   return timeout;
 }
 
@@ -118,14 +121,33 @@ void clear_expired(void)
   Timeout *current = NULL;
 
   while ((current = dequeue_timeout()))
-  {
-    puts("cleared");
-  }
+    free_timeout(&current);
 }
 
 void delete_timeout(Timeout *timeout)
 {
-  (void)timeout;
-  // implement with pointer
-  return;
+  if (!timeout || !timeouts_head)
+    return;
+
+  if (timeouts_head == timeout)
+  {
+    timeouts_head = timeouts_head->next;
+    if (!timeouts_head)
+      timeouts_tail = NULL;
+    free_timeout(&timeout);
+    return;
+  }
+
+  Timeout *current = timeouts_head;
+
+  for (; current->next != timeout; current = current->next)
+    if (!current->next) // not found
+      return;
+
+  current->next = timeout->next;
+
+  if (timeouts_tail == timeout)
+    timeouts_tail = current;
+
+  free_timeout(&timeout);
 }

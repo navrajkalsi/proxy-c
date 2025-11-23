@@ -16,9 +16,10 @@ void enqueue_timeout(Timeout *timeout);
 
 // removes the first timeout which has expired
 // intended to be used in a loop to dequeue all expired timeouts
+// also removes it from the conn struct
 Timeout *dequeue_timeout(void);
 
-// dequeues all dead conns and closes them
+// dequeues all dead conns and frees them
 void clear_expired(void);
 
 // removes timeout entry and frees it
