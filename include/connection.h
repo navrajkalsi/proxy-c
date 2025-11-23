@@ -6,6 +6,7 @@
 #include <sys/types.h>
 
 #include "main.h"
+#include "timeout.h"
 #include "utils.h"
 
 typedef enum
@@ -21,14 +22,6 @@ typedef enum
   CHECK_CONN,
   CLOSE_CONN
 } State;
-
-typedef enum
-{
-  UPSTREAM_WRITE = 10,
-  UPSTREAM_READ = 10,
-  CLIENT_WRITE = 10,
-  CLIENT_READ = 10,
-} Timeouts;
 
 typedef struct endpoint
 {
@@ -71,15 +64,13 @@ typedef struct connection
 
   struct connection **self_ptr;    // this will be an element of active_conns array, used to
                                    // deactive/remove from active_conns(just make this NULL)
-  time_t ttl;                      // time to live
-  struct connection *next_timeout; // for timeouts linked list
+  Timeout *timeouts[TIMEOUTTYPES]; // each conn can have at most TIMEOUTTYPES of timeouts
+                                   // associated with it at once, one for each state
 } Connection;
 
 // global array of conn structs that were added to the epoll table
 // init & free conn() add and remove from this array automatically
 extern Connection *active_conns[MAX_CONNECTIONS];
-
-extern Connection *timeouts_head, *timeouts_tail;
 
 // Returns a pointer to conn that needs to be added to the epoll_instance & activates it
 Connection *init_conn(void);
@@ -121,17 +112,3 @@ bool parse_headers(Connection *conn, Endpoint *endpoint);
 
 // used to continue the conn, if keep alive is true
 void check_conn(Connection *conn);
-
-// must be called before dequeuing
-void refresh_timeouts(time_t ttl);
-
-// adds conn to global list, preserving ttl order
-// after refreshing timeouts
-void enqueue_timeout(Connection *conn);
-
-// removes the first conn whose ttl is < 0
-// intended to be used in a loop to dequeue all expired timeouts
-Connection *dequeue_timeout(void);
-
-// dequeues all dead conns and closes them
-void clear_expired(void);

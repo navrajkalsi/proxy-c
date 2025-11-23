@@ -133,15 +133,8 @@ bool start_proxy(void)
   struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the fds that are ready
                                                // with their respective operation type
 
-  time_t last_refresh = time(NULL), waited = 0; // now
-
   while (RUNNING)
   {
-    waited = time(NULL) - last_refresh;
-    refresh_timeouts(waited); // safe to use as is for starting of the proxy
-    last_refresh += waited;
-    printf("waited1: %jd\n", (intmax_t)waited);
-
     if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS,
                                    timeouts_head ? (int)timeouts_head->ttl : -1)) == -1)
     {
@@ -152,12 +145,6 @@ bool start_proxy(void)
 
       return err("epoll_wait", strerror(errno));
     }
-
-    waited = time(NULL) - last_refresh; // how long did epoll_wait block for
-    refresh_timeouts(waited);
-    last_refresh += waited;
-    printf("waited2: %jd\n", (intmax_t)waited);
-    clear_expired();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
