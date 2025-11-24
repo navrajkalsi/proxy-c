@@ -78,9 +78,11 @@ Connection *init_conn(void);
 void free_conn(Connection **conn);
 
 // adds conn to the active_conns array
+// and starts its timeout
 bool activate_conn(Connection *conn);
 
 // removes event from active_conns array by making self_ptr NULL which make the array entry NULL
+// also removes all conn timeouts
 void deactivate_conn(Connection *conn);
 
 // resets connection variables to their defaults to start a new request

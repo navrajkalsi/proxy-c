@@ -33,22 +33,25 @@ extern Timeout *timeouts_head, *timeouts_tail;
 // adds timeout to global list and marks it active, preserving expires order
 void enqueue_timeout(Timeout *timeout);
 
-// removes the first timeout which has expired, and marks it inactive
+// removes the first timeout, if it has expired, and marks it inactive
 // intended to be used in a loop to dequeue all expired timeouts
 Timeout *dequeue_timeout(void);
 
-// dequeues all dead conns
+// loops and dequeues all dead conns
 void clear_expired(void);
 
 // enqueues the timeout after setting its ttl
 // pass ttl as -1 to use default value
 // use for keep-alive timeout as well
+// also removes previous timeout, if active
 void start_conn_timeout(Connection *conn, time_t ttl);
 
 // uses default timeouts depending on the state
 void start_state_timeout(Connection *conn, TimeoutType type);
 
 // removes timeout entry from the list, and marks it as inactive
+// used for early removal (before timeout expiring)
+// deactivating an event also removes all its timeouts
 void remove_timeout(Timeout *timeout);
 
 // automatically determines created and ttl (if -1) based on type

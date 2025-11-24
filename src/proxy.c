@@ -139,7 +139,7 @@ bool start_proxy(void)
   while (RUNNING)
   {
     time_t now = time(NULL);
-    time_t timeout = timeouts_head ? EXPIRES_IN(timeouts_head) : -1; // for first wait should be -1
+    time_t timeout = timeouts_head ? EXPIRES(timeouts_head) : -1; // for first wait should be -1
     printf("timeout1: %ld\n", timeout);
 
     if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, (int)timeout * 1000)) == -1)
@@ -154,7 +154,7 @@ bool start_proxy(void)
     printf("ready: %d\n", ready_events);
 
     now = time(NULL);
-    timeout = timeouts_head ? EXPIRES_IN(timeouts_head) : -1;
+    timeout = timeouts_head ? EXPIRES(timeouts_head) : -1;
     printf("timeout2: %ld\n", timeout);
 
     clear_expired();
@@ -222,6 +222,7 @@ again:
 
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);
+    start_state_timeout(conn, REQUEST_READ);
     break;
 
   case VERIFY_REQUEST:
@@ -236,6 +237,7 @@ again:
 
   case WRITE_ERROR:
     mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
+    // do not add timeout here to prevent creating a loop
     break;
 
   case CONNECT_UPSTREAM:
@@ -253,18 +255,23 @@ again:
 
   case WRITE_REQUEST:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    start_state_timeout(conn, REQUEST_WRITE);
     break;
 
   case READ_RESPONSE:
     mod_in_epoll(conn, *upstream_fd, READ_FLAGS);
+    start_state_timeout(conn, RESPONSE_READ);
     break;
 
   case WRITE_RESPONSE:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    start_state_timeout(conn, RESPONSE_WRITE);
     break;
 
   case CHECK_CONN:
     check_conn(conn);
+    if (conn->keep_alive)
+      start_state_timeout(conn, -1); // TODO: change for keep alive timer from headers
     goto again;
 
   case CLOSE_CONN:
