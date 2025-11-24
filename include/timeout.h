@@ -18,6 +18,7 @@ typedef enum
 typedef struct timeout
 {
   Connection *conn; // what conn to close in case timeout expires
+  TimeoutType type; // conn or state
   time_t start;     // time when timeout starts
   time_t ttl;       // when does the timeout expire
   bool active;      // is the timeout currently in the list
@@ -56,3 +57,8 @@ void remove_timeout(Timeout *timeout);
 
 // automatically determines created and ttl (if -1) based on type
 void fill_timeout(Connection *conn, TimeoutType type, time_t ttl);
+
+const char *get_type_string(TimeoutType type);
+
+// logging & debugging
+void print_timeouts(void);

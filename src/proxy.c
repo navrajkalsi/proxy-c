@@ -139,8 +139,9 @@ bool start_proxy(void)
   while (RUNNING)
   {
     time_t now = time(NULL);
-    time_t timeout = timeouts_head ? EXPIRES(timeouts_head) : -1; // for first wait should be -1
-    printf("timeout1: %ld\n", timeout);
+    time_t timeout = timeouts_head ? EXPIRES(timeouts_head) : -1; // for first wait, should be -1
+    print_timeouts();
+    printf("Waiting for: %ld\n\n", timeout);
 
     if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, (int)timeout * 1000)) == -1)
     {
@@ -151,13 +152,9 @@ bool start_proxy(void)
 
       return err("epoll_wait", strerror(errno));
     }
-    printf("ready: %d\n", ready_events);
 
-    now = time(NULL);
-    timeout = timeouts_head ? EXPIRES(timeouts_head) : -1;
-    printf("timeout2: %ld\n", timeout);
-
-    clear_expired();
+    clear_expired(); // expired timeouts are handled on their own
+    print_timeouts();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <time.h>
 
 #include "connection.h"
@@ -131,6 +132,25 @@ void remove_timeout(Timeout *timeout)
   timeout->active = false;
 }
 
+const char *get_type_string(TimeoutType type)
+{
+  switch (type)
+  {
+  case REQUEST_READ:
+    return "Request_read";
+  case REQUEST_WRITE:
+    return "Request_write";
+  case RESPONSE_READ:
+    return "Response_read";
+  case RESPONSE_WRITE:
+    return "Response_write";
+  case CONNECTION:
+    return "Connection";
+  default:
+    return "";
+  }
+}
+
 void fill_timeout(Connection *conn, TimeoutType type, time_t ttl)
 {
   if (!conn)
@@ -139,7 +159,21 @@ void fill_timeout(Connection *conn, TimeoutType type, time_t ttl)
   Timeout *timeout = type == CONNECTION ? &conn->conn_timeout : &conn->state_timeout;
 
   timeout->conn = conn;
+  timeout->type = type;
   timeout->start = time(NULL);
   timeout->ttl = ttl == -1 ? TimeoutVals[type] : ttl;
   timeout->next = NULL;
+}
+
+void print_timeouts(void)
+{
+  int i = 0;
+  time_t now = time(NULL);
+  puts("Timeouts: [");
+
+  for (Timeout *current = timeouts_head; current; current = current->next)
+    printf("\t{%d - Type: %s, Time: %ld, Expires: %ld }\n", ++i, get_type_string(current->type),
+           current->ttl, EXPIRES(current));
+
+  printf("] Len: %d\n", i);
 }
