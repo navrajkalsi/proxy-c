@@ -61,9 +61,9 @@
 #define ASSIGN_IF_NULL(str, literal) !str.data ? STR(literal) : str
 
 // timeout.h specific
-#define EXPIRES_IN(timeout_p)                                                                      \
-  (timeout_p->ttl > (now - timeout_p->created)                                                     \
-       ? timeout_p->ttl - (now - timeout_p->created)                                               \
+#define EXPIRES(timeout_p)                                                                         \
+  (timeout_p->ttl > (now - timeout_p->start)                                                       \
+       ? timeout_p->ttl - (now - timeout_p->start)                                                 \
        : 0) // 'now' should be already defined as time(NULL) in the same scope
 
 extern bool RUNNING;

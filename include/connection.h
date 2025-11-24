@@ -6,9 +6,8 @@
 #include <sys/types.h>
 
 #include "main.h"
+#include "timeout.h"
 #include "utils.h"
-
-typedef struct timeout Timeout;
 
 typedef enum
 {
@@ -41,19 +40,6 @@ typedef struct endpoint
   char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was read
 } Endpoint;
 
-typedef enum
-{
-  CLIENT_READ,
-  UPSTREAM_WRITE,
-  UPSTREAM_READ,
-  CLIENT_WRITE,
-  CONNECTION,
-  TIMEOUTTYPES
-} TimeoutType;
-
-// will contain int timeouts at correspoding state indices
-extern const int TimeoutVals[TIMEOUTTYPES];
-
 // struct to be used for adding/modding/deleting to the epoll instance
 // every epoll_event.data in the epoll instance will have its data as a pointer to this struct
 // target fd will depend on the state of the conn
@@ -76,20 +62,11 @@ typedef struct connection
   bool complete; // full response received and sent
   bool keep_alive;
 
-  struct connection **self_ptr;    // this will be an element of active_conns array, used to
-                                   // deactive/remove from active_conns(just make this NULL)
-  Timeout *timeouts[TIMEOUTTYPES]; // each conn can have at most TIMEOUTTYPES of timeouts
-                                   // associated with it at once, one for each state
+  struct connection **self_ptr; // this will be an element of active_conns array, used to
+                                // deactive/remove from active_conns(just make this NULL)
+  Timeout conn_timeout;         // full conn timeout, also use for keep-alive
+  Timeout state_timeout;        // timeout for individual read/write states
 } Connection;
-
-typedef struct timeout
-{
-  Connection *conn; // what conn to close in case timeout expires
-  TimeoutType type; // each conn gets one timeout struct for each type
-  time_t created;   // time when timeout starts
-  time_t ttl;       // when does the timeout expire
-  struct timeout *next;
-} Timeout;
 
 // global array of conn structs that were added to the epoll table
 // init & free conn() add and remove from this array automatically

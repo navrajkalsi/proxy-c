@@ -1,72 +1,14 @@
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
+#include "connection.h"
 #include "main.h"
+#include "proxy.h"
 #include "timeout.h"
-#include "utils.h"
 
 // see TimeoutType enum for order
-const int TimeoutVals[TIMEOUTTYPES] = {10, 5, 20, 5, 30};
+const int TimeoutVals[TIMEOUTTYPES] = {10, 5, 20, 5, 10};
 
 Timeout *timeouts_head = NULL, *timeouts_tail = NULL;
-
-Timeout *init_timeout(Connection *conn, TimeoutType type)
-{
-  if (!conn)
-  {
-    err("null_pointer", strerror(EFAULT));
-    return NULL;
-  }
-
-  if (type == TIMEOUTTYPES)
-  {
-    err("verify_timeouttype", "Invalid timeout type");
-    return NULL;
-  }
-
-  Timeout *timeout = malloc(sizeof(struct timeout));
-
-  if (!timeout)
-  {
-    err("malloc", strerror(errno));
-    return NULL;
-  }
-
-  timeout->conn = conn;
-  timeout->type = type;
-  timeout->created = time(NULL);
-  timeout->ttl = TimeoutVals[type];
-  timeout->next = NULL;
-
-  if (timeout->created == (time_t)(-1))
-  {
-    free(timeout);
-    err("time", NULL);
-    return NULL;
-  }
-
-  // adding the timeout to the timeouts array in conn
-  if (conn->timeouts[type])
-    delete_timeout(conn->timeouts[type]);
-
-  conn->timeouts[type] = timeout;
-
-  enqueue_timeout(timeout);
-
-  return timeout;
-}
-
-void free_timeout(Timeout **timeout)
-{
-  if (!timeout || !*timeout)
-    return;
-
-  free(*timeout);
-  *timeout = NULL;
-}
 
 void enqueue_timeout(Timeout *timeout)
 {
@@ -76,33 +18,36 @@ void enqueue_timeout(Timeout *timeout)
   Timeout *current = timeouts_head;
   time_t now = time(NULL);
 
-  if (!current) // new start
+  timeout->active = true;
+
+  if (!current)
+  { // new start
     timeouts_head = timeouts_tail = timeout;
-  else if (EXPIRES_IN(timeout) >= EXPIRES_IN(timeouts_tail))
+    return;
+  }
+
+  if (EXPIRES(timeout) >= EXPIRES(timeouts_tail))
   { // insert at end
     timeouts_tail->next = timeout;
     timeouts_tail = timeout;
+    return;
   }
-  else
-    while (true)
-    { // look for nearest ttl
-      if (current->next && EXPIRES_IN(timeout) > EXPIRES_IN(current->next))
-        continue;
 
-      if (!current->next)
-        timeouts_tail = timeout;
+  while (current->next && EXPIRES(timeout) > EXPIRES(current->next))
+    ; // look for nearest ttl
 
-      timeout->next = current->next;
-      current->next = timeout;
-      break;
-    }
+  if (!current->next)
+    timeouts_tail = timeout;
+
+  timeout->next = current->next;
+  current->next = timeout;
 }
 
 Timeout *dequeue_timeout(void)
 {
   time_t now = time(NULL);
 
-  if (!timeouts_head || EXPIRES_IN(timeouts_head)) // if no head or head has not expired yet
+  if (!timeouts_head || EXPIRES(timeouts_head))
     return NULL;
 
   Timeout *timeout = timeouts_head;
@@ -110,8 +55,7 @@ Timeout *dequeue_timeout(void)
   if (!timeouts_head)
     timeouts_tail = NULL;
 
-  // remove from timeouts array of conn
-  timeout->conn->timeouts[timeout->type] = NULL;
+  timeout->active = false;
 
   return timeout;
 }
@@ -121,10 +65,45 @@ void clear_expired(void)
   Timeout *current = NULL;
 
   while ((current = dequeue_timeout()))
-    free_timeout(&current);
+  {
+    Connection *conn = current->conn;
+    if (conn->state == READ_REQUEST || conn->state == WRITE_REQUEST)
+      conn->status = 408;
+    else if (conn->state == READ_RESPONSE || conn->state == WRITE_RESPONSE)
+      conn->status = 504;
+    else // overall conn timeout
+      conn->status = 500;
+
+    conn->state = WRITE_ERROR;
+    handle_state(conn);
+  }
 }
 
-void delete_timeout(Timeout *timeout)
+void start_conn_timeout(Connection *conn, time_t ttl)
+{
+  if (!conn)
+    return;
+
+  if (conn->conn_timeout.active)
+    remove_timeout(&conn->conn_timeout);
+
+  fill_timeout(conn, CONNECTION, ttl);
+  enqueue_timeout(&conn->conn_timeout);
+}
+
+void start_state_timeout(Connection *conn, TimeoutType type)
+{
+  if (!conn)
+    return;
+
+  if (conn->state_timeout.active)
+    remove_timeout(&conn->state_timeout);
+
+  fill_timeout(conn, type, -1);
+  enqueue_timeout(&conn->state_timeout);
+}
+
+void remove_timeout(Timeout *timeout)
 {
   if (!timeout || !timeouts_head)
     return;
@@ -134,7 +113,7 @@ void delete_timeout(Timeout *timeout)
     timeouts_head = timeouts_head->next;
     if (!timeouts_head)
       timeouts_tail = NULL;
-    free_timeout(&timeout);
+    timeout->active = false;
     return;
   }
 
@@ -149,5 +128,18 @@ void delete_timeout(Timeout *timeout)
   if (timeouts_tail == timeout)
     timeouts_tail = current;
 
-  free_timeout(&timeout);
+  timeout->active = false;
+}
+
+void fill_timeout(Connection *conn, TimeoutType type, time_t ttl)
+{
+  if (!conn)
+    return;
+
+  Timeout *timeout = type == CONNECTION ? &conn->conn_timeout : &conn->state_timeout;
+
+  timeout->conn = conn;
+  timeout->start = time(NULL);
+  timeout->ttl = ttl == -1 ? TimeoutVals[type] : ttl;
+  timeout->next = NULL;
 }

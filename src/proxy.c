@@ -130,6 +130,8 @@ bool setup_epoll(int proxy_fd)
 
 bool start_proxy(void)
 {
+  timeouts_head = timeouts_tail = NULL;
+
   int ready_events = -1;
   struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the fds that are ready
                                                // with their respective operation type
@@ -140,7 +142,7 @@ bool start_proxy(void)
     time_t timeout = timeouts_head ? EXPIRES_IN(timeouts_head) : -1; // for first wait should be -1
     printf("timeout1: %ld\n", timeout);
 
-    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, (int)timeout)) == -1)
+    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, (int)timeout * 1000)) == -1)
     {
       if (errno == EINTR && !RUNNING) // ctrl c for example, will not work if
                                       // sighandler is not used first
@@ -149,10 +151,13 @@ bool start_proxy(void)
 
       return err("epoll_wait", strerror(errno));
     }
+    printf("ready: %d\n", ready_events);
 
     now = time(NULL);
     timeout = timeouts_head ? EXPIRES_IN(timeouts_head) : -1;
     printf("timeout2: %ld\n", timeout);
+
+    clear_expired();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "connection.h"
@@ -118,9 +119,6 @@ void reset_conn(Connection *conn)
   conn->path = ERR_STR;
   conn->keep_alive = false;
   conn->complete = false;
-
-  for (int i = 0; i < TIMEOUTTYPES; ++i)
-    conn->timeouts[i] = NULL;
 }
 
 // after non_block all the system calls on this fd return instantly,
