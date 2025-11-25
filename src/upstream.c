@@ -193,7 +193,7 @@ void read_response(Connection *conn)
   if (read_status == 0)
   { // upstream disconnect
     conn->state = CLOSE_CONN;
-    err("read", "EOF received");
+    err("read", "Upstream EOF received");
     return;
   }
 

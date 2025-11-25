@@ -52,7 +52,7 @@ void start_state_timeout(Connection *conn, TimeoutType type);
 
 // removes timeout entry from the list, and marks it as inactive
 // used for early removal (before timeout expiring)
-// deactivating an event also removes all its timeouts
+// freeing a conn also removes all its timeouts
 void remove_timeout(Timeout *timeout);
 
 // automatically determines created and ttl (if -1) based on type

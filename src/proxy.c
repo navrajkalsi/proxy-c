@@ -140,8 +140,6 @@ bool start_proxy(void)
   {
     time_t now = time(NULL);
     time_t timeout = timeouts_head ? EXPIRES(timeouts_head) : -1; // for first wait, should be -1
-    print_timeouts();
-    printf("Waiting for: %ld\n\n", timeout);
 
     if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, (int)timeout * 1000)) == -1)
     {
@@ -154,7 +152,6 @@ bool start_proxy(void)
     }
 
     clear_expired(); // expired timeouts are handled on their own
-    print_timeouts();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
@@ -214,7 +211,7 @@ again:
   switch (conn->state)
   {
   case ACCEPT_CLIENT:
-    err("verify_state", "Cannot accept client in handle_state, logic error");
+    err("verify_state", "Cannot accept client in handle_state. Logic error");
     break;
 
   case READ_REQUEST:
@@ -233,6 +230,8 @@ again:
     goto again;
 
   case WRITE_ERROR:
+    remove_timeout(&conn->conn_timeout);
+    remove_timeout(&conn->state_timeout);
     mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
     // do not add timeout here to prevent creating a loop
     break;
@@ -267,8 +266,7 @@ again:
 
   case CHECK_CONN:
     check_conn(conn);
-    if (conn->keep_alive)
-      start_state_timeout(conn, -1); // TODO: change for keep alive timer from headers
+    // TODO: think about keep-alive
     goto again;
 
   case CLOSE_CONN:

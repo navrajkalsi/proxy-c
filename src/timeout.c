@@ -68,9 +68,9 @@ void clear_expired(void)
   while ((current = dequeue_timeout()))
   {
     Connection *conn = current->conn;
-    if (conn->state == READ_REQUEST || conn->state == WRITE_REQUEST)
+    if (current->type == REQUEST_READ || current->type == REQUEST_WRITE)
       conn->status = 408;
-    else if (conn->state == READ_RESPONSE || conn->state == WRITE_RESPONSE)
+    else if (current->type == RESPONSE_READ || current->type == RESPONSE_WRITE)
       conn->status = 504;
     else // overall conn timeout
       conn->status = 500;
@@ -85,8 +85,7 @@ void start_conn_timeout(Connection *conn, time_t ttl)
   if (!conn)
     return;
 
-  if (conn->conn_timeout.active)
-    remove_timeout(&conn->conn_timeout);
+  remove_timeout(&conn->conn_timeout);
 
   fill_timeout(conn, CONNECTION, ttl);
   enqueue_timeout(&conn->conn_timeout);
@@ -97,8 +96,7 @@ void start_state_timeout(Connection *conn, TimeoutType type)
   if (!conn)
     return;
 
-  if (conn->state_timeout.active)
-    remove_timeout(&conn->state_timeout);
+  remove_timeout(&conn->state_timeout);
 
   fill_timeout(conn, type, -1);
   enqueue_timeout(&conn->state_timeout);
@@ -106,7 +104,7 @@ void start_state_timeout(Connection *conn, TimeoutType type)
 
 void remove_timeout(Timeout *timeout)
 {
-  if (!timeout || !timeouts_head)
+  if (!timeout || !timeout->active || !timeouts_head)
     return;
 
   if (timeouts_head == timeout)

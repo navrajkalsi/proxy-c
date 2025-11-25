@@ -141,7 +141,7 @@ void read_request(Connection *conn)
   if (read_status == 0)
   { // client disconnect
     conn->state = CLOSE_CONN;
-    err("read", "EOF received");
+    err("read", "Client EOF received");
     return;
   }
 

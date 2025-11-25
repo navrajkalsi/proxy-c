@@ -61,6 +61,9 @@ void free_conn(Connection **conn)
   Connection *to_free = *conn;
   deactivate_conn(*conn);
 
+  remove_timeout(&to_free->conn_timeout);
+  remove_timeout(&to_free->state_timeout);
+
   free(to_free);
   to_free = NULL;
 }
@@ -76,10 +79,6 @@ bool activate_conn(Connection *conn)
       active_conns[i] = conn;
       conn->self_ptr = active_conns + i;
 
-      // only conn_timeout is started
-      // state timeout is not touched
-      start_conn_timeout(conn, -1);
-
       return true;
     }
 
@@ -90,9 +89,6 @@ void deactivate_conn(Connection *conn)
 {
   if (!conn)
     return;
-
-  remove_timeout(&conn->conn_timeout);
-  remove_timeout(&conn->state_timeout);
 
   *(conn->self_ptr) = NULL;
   conn->self_ptr = NULL;
@@ -127,6 +123,9 @@ void reset_conn(Connection *conn)
   conn->path = ERR_STR;
   conn->keep_alive = false;
   conn->complete = false;
+
+  // only conn_timeout is started, state timeout is not touched
+  start_conn_timeout(conn, -1);
 }
 
 // after non_block all the system calls on this fd return instantly,
