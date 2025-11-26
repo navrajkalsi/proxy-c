@@ -316,9 +316,6 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
   else
     endpoint->headers_found = true;
 
-  if (endpoint->headers_found)
-    puts("found headers");
-
   headers_end += TRAILER_STR.len; // now past the last \n
 
   endpoint->headers.data = endpoint->buffer;
@@ -387,7 +384,6 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
     if (full_size < (size_t)endpoint->read_index)
     {                                                  // body read and another request
       endpoint->next_index = (ptrdiff_t)full_size + 1; // will be copied to the start for next read
-      printf("next index from headers: %ld\n", endpoint->next_index);
       goto read_complete;
     }
 
@@ -422,10 +418,7 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
     return true;
   }
   else
-  {
-    puts("else block");
     *headers_end = org_char;
-  }
 
 read_complete:
   endpoint->to_read = 0;

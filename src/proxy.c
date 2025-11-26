@@ -205,7 +205,7 @@ void handle_state(Connection *conn)
 
 again:
 
-  log_state(conn->state);
+  // log_state(conn->state);
 
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
