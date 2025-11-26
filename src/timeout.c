@@ -7,7 +7,7 @@
 #include "timeout.h"
 
 // see TimeoutType enum for order
-const int TimeoutVals[TIMEOUTTYPES] = {10, 5, 20, 5, 10};
+const int TimeoutVals[TIMEOUTTYPES] = {15, 10, 30, 10, 45};
 
 Timeout *timeouts_head = NULL, *timeouts_tail = NULL;
 

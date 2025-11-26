@@ -95,9 +95,6 @@ void read_request(Connection *conn)
   while (client->to_read &&
          (read_status = read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
   {
-    printf("read_status: %zd\n", read_status);
-    printf("read_index: %zd\n", client->read_index);
-
     client->buffer[client->read_index + read_status] = '\0';
     client->read_index += client->headers_found ? 0 : read_status;
 

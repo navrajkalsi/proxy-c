@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "args.h"
 #include "connection.h"
 #include "http.h"
 #include "main.h"
@@ -153,6 +154,8 @@ void read_response(Connection *conn)
       upstream->buffer[upstream->read_index] = '\0';
     }
 
+    puts(upstream->buffer);
+
     if (!upstream->headers_found)
     {
       if (!parse_headers(conn, upstream))
@@ -160,12 +163,17 @@ void read_response(Connection *conn)
 
       // no content len or encoding was specified or full response read
       if (upstream->headers_found && !upstream->to_read)
+      {
+        puts("complete from headers");
         goto complete;
+      }
     }
     else if (upstream->content_len)
     { // bytes left from content len
       size_t extra =
           (size_t)read_status > upstream->to_read ? (size_t)read_status - upstream->to_read : 0;
+
+      printf("extra: %ld\n", extra);
 
       if (extra)
       {
@@ -176,12 +184,18 @@ void read_response(Connection *conn)
         upstream->to_read -= (size_t)read_status;
 
       if (!upstream->to_read)
+      {
+        puts("complete from content len");
         goto complete;
+      }
     }
     else if (upstream->chunked)
     { // checking for last chunk, was not received during parse_headers()
       if (find_last_chunk(upstream))
+      {
+        puts("complete from last chunk");
         goto complete;
+      }
     }
     else
     {
@@ -197,7 +211,9 @@ void read_response(Connection *conn)
     return;
   }
 
-  conn->state = WRITE_RESPONSE; // write whats in buffer
+  if (upstream->headers_found)
+    conn->state = WRITE_RESPONSE; // write whats in buffer, only if headers are found so that
+                                  // parse_headers can work (in case of partial header reads)
 
   if (read_status == -1)
   {
@@ -263,15 +279,15 @@ bool generate_error_response(Connection *conn)
 
   const Str err_str = get_status_str(conn->status), date_str = {.data = date, .len = DATE_LEN - 1},
             response_body[] = {STR("<html><head><title>"), err_str,
-                               STR("</title</head><body><center><h1>"), err_str,
-                               STR("</h1></center><hr>center>" SERVER "</center></body>")};
+                               STR("</title></head><body><center><h1>"), err_str,
+                               STR("</h1></center><hr><center>" SERVER "</center></body></html>")};
 
   size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
 
   for (uint i = 0; i < body_elms; ++i)
     body_size += (size_t)response_body[i].len;
 
-  // calculating number of bytes required to hold the final length, will mostly be 3
+  // calculating number of chars required to hold the final length, will mostly be 3
   uint divisor = 1, num_of_digits = 0;
   while (body_size / divisor > 0 && ++num_of_digits)
     divisor *= 10;
@@ -371,15 +387,21 @@ void write_response(Connection *conn)
   if (!upstream->to_write)
     upstream->write_index = 0;
 
+  printf("read index: %ld\n", upstream->read_index);
+
+  printf("next index: %ld\n", upstream->next_index);
   upstream->to_write =
       (size_t)(upstream->read_index - upstream->next_index - upstream->write_index);
   ssize_t write_status = 0;
+
+  printf("to write: %ld \n", upstream->to_write);
 
   while ((upstream->to_write -= (size_t)write_status) &&
          (write_status =
               write(client->fd, upstream->buffer + upstream->write_index, upstream->to_write)) > 0)
     upstream->write_index += write_status;
 
+  printf("write index: %ld\n", upstream->write_index);
   if (!write_status)
   {
     err("write", "No write status");
@@ -399,11 +421,13 @@ void write_response(Connection *conn)
     }
   }
 
-  if (!upstream->to_write && !conn->complete)
-    conn->state = READ_RESPONSE;
+  // if (!upstream->to_write && !conn->complete)
+  //   conn->state = READ_RESPONSE;
 
   if (conn->complete)
     conn->state = CHECK_CONN;
+  else
+    conn->state = READ_RESPONSE;
 
   return;
 

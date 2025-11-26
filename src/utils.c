@@ -83,6 +83,9 @@ bool err(const char *function, const char *error)
 
 bool warn(const char *function, const char *warning)
 {
+  if (!config.log_warnings)
+    return false;
+
   if (function && warning)
     fprintf(stderr, "\033[1;33m%s()\033[0m: %s\n", function, warning);
   else if (function)

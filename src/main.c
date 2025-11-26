@@ -13,7 +13,11 @@
 #include "utils.h"
 
 bool RUNNING = true;
-Config config = {.port = NULL, .accept_all = false, .upstream = NULL};
+Config config = {.port = NULL,
+                 .canonical_host = NULL,
+                 .accept_all = false,
+                 .upstream = NULL,
+                 .log_warnings = false};
 int EPOLL_FD = -1;
 regex_t origin_regex;
 

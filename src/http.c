@@ -75,7 +75,7 @@ bool get_header_value(const char *headers, const char *header_name, Str *header_
   }
 
   if (!header_start)
-    return err("strcasestr", "Header name not found");
+    return warn("strcasestr", "Header name not found");
 
   // incrementing to start of the header value
   while (isspace(*++header_start))

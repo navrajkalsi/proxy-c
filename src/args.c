@@ -13,12 +13,16 @@
 
 Config parse_args(int argc, char *argv[])
 {
-  Config config = {.port = NULL, .canonical_host = NULL, .upstream = NULL, .accept_all = false};
+  Config config = {.port = NULL,
+                   .canonical_host = NULL,
+                   .upstream = NULL,
+                   .accept_all = false,
+                   .log_warnings = false};
 
   int arg;
   unsigned int args_parsed = 0;
 
-  while ((arg = getopt(argc, argv, "ac:hp:u:v")) != -1)
+  while ((arg = getopt(argc, argv, "ac:hp:u:vw")) != -1)
     switch (arg)
     {
     case 'a':
@@ -63,6 +67,9 @@ Config parse_args(int argc, char *argv[])
     case 'v':
       printf("%s version: %s\n", argv[0], VERSION);
       exit(EXIT_SUCCESS);
+    case 'w':
+      config.log_warnings = true;
+      break;
     case '?': // If an unknown flag or no argument is passed for an option
               // 'optopt' is set to the flag
       if (optopt == 'c')
@@ -133,7 +140,8 @@ void print_usage(const char *prg)
          "-h             Print this help message.\n"
          "-p <port>      Port to listen on.\n"
          "-u <upstream>  Server URL to contact for response.\n"
-         "-v             Print the version number.\n",
+         "-v             Print the version number.\n"
+         "-w             Print warnings with errors.\n",
          prg);
 }
 
@@ -150,8 +158,10 @@ void print_args(unsigned int args_parsed, const Config *config)
 
   printf("\nCanonical Host set to: %s\n"
          "Upstream URL set to: %s\n"
-         "Listening Port set to: %s\n",
-         config->canonical_host, config->upstream, config->port);
+         "Listening Port set to: %s\n"
+         "Log Warnings set to: %s\n",
+         config->canonical_host, config->upstream, config->port,
+         config->log_warnings ? "true" : "false");
 
   config->accept_all ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
                      : puts("Proxy Accepting Incoming Connections from Localhost Only.\n");

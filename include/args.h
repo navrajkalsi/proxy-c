@@ -8,6 +8,7 @@ typedef struct config
   char *canonical_host;
   char *upstream;
   bool accept_all;
+  bool log_warnings;
 } Config;
 
 Config parse_args(int argc, char *argv[]);
