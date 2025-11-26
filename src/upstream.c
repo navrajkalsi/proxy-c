@@ -140,8 +140,12 @@ void read_response(Connection *conn)
   }
 
   // must have written the buffer to client in full, before reading again
-  upstream->read_index = 0;
-  *upstream->buffer = '\0';
+  // only after full headers were found
+  if (upstream->headers_found)
+  {
+    upstream->read_index = 0;
+    *upstream->buffer = '\0';
+  }
 
   ssize_t read_status = 0;
   size_t max_read = BUFFER_SIZE - (size_t)upstream->read_index - 1;
