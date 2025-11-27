@@ -15,5 +15,3 @@ bool start_proxy(void);
 void handle_state(Connection *conn);
 
 void free_active_conns(void);
-
-void log_state(int state);

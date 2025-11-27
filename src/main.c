@@ -23,6 +23,8 @@ regex_t origin_regex;
 
 int main(int argc, char *argv[])
 {
+  print_banner();
+
   if (!setup_sig_handler())
   {
     err("setup_sig_handler", strerror(errno));

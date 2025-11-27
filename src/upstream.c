@@ -198,12 +198,12 @@ void read_response(Connection *conn)
   if (read_status == 0)
   { // upstream disconnect
     conn->state = CLOSE_CONN;
-    err("read", "Upstream EOF received");
+    warn("read", "Upstream EOF received");
     return;
   }
 
-  // write whats in buffer, only if headers are found so that
-  // parse_headers can work (in case of partial header reads)
+  // write whats in buffer, only if headers are found
+  // this is because parse_headers() requires all the headers to be present in one continuous memory
   // else continue to read more
   if (upstream->headers_found)
     conn->state = WRITE_RESPONSE;
@@ -245,7 +245,7 @@ void handle_error_response(Connection *conn)
   // every thing response related should use upstream vars
   if (!generate_error_response(conn))
   {
-    err("generate_error_response", NULL);
+    warn("generate_error_response", NULL);
     char tmp_err[] = "500 Internal Server Error";
     memcpy(conn->upstream.buffer, tmp_err, sizeof tmp_err);
   }
@@ -323,6 +323,7 @@ bool generate_error_response(Connection *conn)
   {
     if (!response_headers[i].len) // skip if ERR_STR
       continue;
+
     memcpy(upstream->buffer + buf_ptr, response_headers[i].data, (size_t)response_headers[i].len);
     buf_ptr += response_headers[i].len;
   }
@@ -408,9 +409,6 @@ void write_response(Connection *conn)
       goto error;
     }
   }
-
-  // if (!upstream->to_write && !conn->complete)
-  //   conn->state = READ_RESPONSE;
 
   if (conn->complete)
     conn->state = CHECK_CONN;

@@ -71,6 +71,7 @@ typedef struct connection
 // global array of conn structs that were added to the epoll table
 // init & free conn() add and remove from this array automatically
 extern Connection *active_conns[MAX_CONNECTIONS];
+extern int active_conns_num; // for future use, should not be used as index for active_conns array
 
 // Returns a pointer to conn that needs to be added to the epoll_instance & activates it
 Connection *init_conn(void);

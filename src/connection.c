@@ -19,6 +19,7 @@
 #include "utils.h"
 
 Connection *active_conns[MAX_CONNECTIONS] = {0};
+int active_conns_num = 0;
 
 Connection *init_conn(void)
 {
@@ -79,6 +80,8 @@ bool activate_conn(Connection *conn)
       active_conns[i] = conn;
       conn->self_ptr = active_conns + i;
 
+      ++active_conns_num;
+
       return true;
     }
 
@@ -92,6 +95,8 @@ void deactivate_conn(Connection *conn)
 
   *(conn->self_ptr) = NULL;
   conn->self_ptr = NULL;
+
+  --active_conns_num;
 }
 
 void reset_conn(Connection *conn)
@@ -149,8 +154,8 @@ bool add_to_epoll(Connection *conn, int fd, int flags)
   struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
 
   if (fd == -1)
-    return err("get_target_fd", "Socket is probably being added to epoll before "
-                                "accepting/connecting");
+    return err("get_target_fd",
+               "Socket is probably being added to epoll before accepting/connecting");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, fd, &epoll_event) == -1)
     return err("epoll_ctl_add", strerror(errno));
@@ -163,7 +168,7 @@ bool mod_in_epoll(Connection *conn, int fd, int flags)
   struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
 
   if (fd == -1)
-    return err("get_target_fd", "Socket fd is not initialized, logic error");
+    return err("get_target_fd", "Socket fd is not initialized. Logic error!");
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, fd, &epoll_event) == -1)
     return err("epoll_ctl_mod", strerror(errno));

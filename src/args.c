@@ -94,7 +94,7 @@ Config parse_args(int argc, char *argv[])
   {
     if (!(exec_regex(&origin_regex, DEFAULT_CANONICAL_HOST)))
     {
-      err("exec_regex", "Invalid canonical host passed");
+      err("exec_regex", "Compiled canonical host is invalid.");
       free_config(&config);
       exit(EXIT_FAILURE);
     }
@@ -105,7 +105,7 @@ Config parse_args(int argc, char *argv[])
   {
     if (!(exec_regex(&origin_regex, DEFAULT_UPSTREAM)))
     {
-      err("exec_regex", "Invalid upstream url passed");
+      err("exec_regex", "Complied upstream URL is invalid.");
       free_config(&config);
       exit(EXIT_FAILURE);
     }
@@ -116,7 +116,7 @@ Config parse_args(int argc, char *argv[])
   {
     if (!(validate_port(DEFAULT_PORT)))
     {
-      err("validate_port", "Invalid port passed");
+      err("validate_port", "Compiled port is invalid");
       free_config(&config);
       exit(EXIT_FAILURE);
     }
@@ -130,12 +130,11 @@ Config parse_args(int argc, char *argv[])
 void print_usage(const char *prg)
 {
   if (!prg)
-    return;
+    return (void)err("print_usage", "NULL program pointer passed");
 
   printf("\nUsage: %s [OPTIONS] [ARGS...]\n"
          "Options:\n"
-         "-a             Accept Incoming Connections from all IPs, defaults "
-         "to Localhost only.\n"
+         "-a             Accept Incoming Connections from all IPs, defaults to Localhost only.\n"
          "-c             Canonical Host to redirect requests to."
          "-h             Print this help message.\n"
          "-p <port>      Port to listen on.\n"
@@ -148,10 +147,7 @@ void print_usage(const char *prg)
 void print_args(unsigned int args_parsed, const Config *config)
 {
   if (!config)
-  {
-    null_ptr("Invalid config pointer");
-    return;
-  }
+    return (void)err("print_args", "NULL config pointer passed");
 
   if (args_parsed)
     printf("\nParsed %u Argument(s).", args_parsed);
@@ -170,7 +166,7 @@ void print_args(unsigned int args_parsed, const Config *config)
 bool validate_port(char *port)
 {
   if (!port)
-    return set_efault();
+    return err("validate_port", "NULL port pointer passed");
 
   char *end;
   const long port_num = strtol(port, &end, 10);

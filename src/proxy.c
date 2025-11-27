@@ -151,7 +151,7 @@ bool start_proxy(void)
       return err("epoll_wait", strerror(errno));
     }
 
-    clear_expired(); // expired timeouts are handled on their own
+    clear_expired();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
@@ -180,13 +180,22 @@ bool start_proxy(void)
         write_response(conn);
 
       else if (events & EPOLLHUP)
-        puts("hang up");
+      {
+        warn("check_state", "Hang up detected");
+        conn->state = CLOSE_CONN;
+      }
       else if (events & EPOLLRDHUP)
-        puts("read hang up");
+      {
+        warn("check_state", "Read hang up detected");
+        conn->state = CLOSE_CONN;
+      }
       else if (events & EPOLLERR)
-        puts("error");
+      {
+        warn("check_state", "Error detected on file descriptor");
+        conn->state = CLOSE_CONN;
+      }
       else
-        puts("Unknown state");
+        printf("Unexpected state for epoll_wait(): %s\n", get_state_string(conn->state));
 
       handle_state(conn);
     }
@@ -205,7 +214,7 @@ void handle_state(Connection *conn)
 
 again:
 
-  // log_state(conn->state);
+  log_state(conn->state);
 
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
@@ -270,7 +279,6 @@ again:
     goto again;
 
   case CLOSE_CONN:
-    // TODO: free resources
     if (*client_fd >= 0)
       del_from_epoll(*client_fd);
 
@@ -291,43 +299,4 @@ void free_active_conns(void)
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
     if (active_conns[i])
       free_conn(active_conns + i);
-}
-
-void log_state(int state)
-{
-  switch (state)
-  {
-  case ACCEPT_CLIENT:
-    puts("accept conn");
-    break;
-  case READ_REQUEST:
-    puts("read_request");
-    break;
-  case VERIFY_REQUEST:
-    puts("verify_request");
-    break;
-  case WRITE_ERROR:
-    puts("write_error");
-    break;
-  case CONNECT_UPSTREAM:
-    puts("connect_upstream");
-    break;
-  case WRITE_REQUEST:
-    puts("write_request");
-    break;
-  case READ_RESPONSE:
-    puts("read_response");
-    break;
-  case WRITE_RESPONSE:
-    puts("write_response");
-    break;
-  case CHECK_CONN:
-    puts("check_conn");
-    break;
-  case CLOSE_CONN:
-    puts("close_conn");
-    break;
-  default:
-    err("verify_state", "Unknown state");
-  }
 }

@@ -6,8 +6,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "connection.h"
 #include "main.h"
-#include "proxy.h"
 #include "utils.h"
 
 void str_print(const Str *in)
@@ -143,14 +143,18 @@ void handle_sigpipe(int sig)
   return;
 }
 
-void print_active_num(void)
-{
-  int active = 0;
-  for (int i = 0; i < MAX_CONNECTIONS; ++i)
-    if (active_conns[i])
-      active++;
+void print_active_num(void) { printf("Num of active connections: %d\n", active_conns_num); }
 
-  printf("Num of active connections: %d\n", active);
+void print_banner(void)
+{
+  puts("\033[1;37m");
+  puts(" ██████╗ ██████╗  ██████╗ ██╗  ██╗██╗   ██╗      ██████╗");
+  puts(" ██╔══██╗██╔══██╗██╔═══██╗╚██╗██╔╝╚██╗ ██╔╝     ██╔════╝");
+  puts(" ██████╔╝██████╔╝██║   ██║ ╚███╔╝  ╚████╔╝█████╗██║     ");
+  puts(" ██╔═══╝ ██╔══██╗██║   ██║ ██╔██╗   ╚██╔╝ ╚════╝██║     ");
+  puts(" ██║     ██║  ██║╚██████╔╝██╔╝ ██╗   ██║        ╚██████╗");
+  puts(" ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝         ╚═════╝");
+  puts("\033[0m");
 }
 
 // does not handle 0 & only works for positive num
@@ -200,3 +204,34 @@ bool exec_regex(const regex_t *regex, const char *match)
 
   return true;
 }
+
+const char *get_state_string(int state)
+{
+  switch (state)
+  {
+  case ACCEPT_CLIENT:
+    return "accept conn";
+  case READ_REQUEST:
+    return "read_request";
+  case VERIFY_REQUEST:
+    return "verify_request";
+  case WRITE_ERROR:
+    return "write_error";
+  case CONNECT_UPSTREAM:
+    return "connect_upstream";
+  case WRITE_REQUEST:
+    return "write_request";
+  case READ_RESPONSE:
+    return "read_response";
+  case WRITE_RESPONSE:
+    return "write_response";
+  case CHECK_CONN:
+    return "check_conn";
+  case CLOSE_CONN:
+    return "close_conn";
+  default:
+    return "Unknown state";
+  }
+}
+
+void log_state(int state) { puts(get_state_string(state)); }

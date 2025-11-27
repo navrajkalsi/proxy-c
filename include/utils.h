@@ -54,6 +54,8 @@ void handle_sigpipe(int sig);
 // prints number of active connections
 void print_active_num(void);
 
+void print_banner(void);
+
 // out should point to a memory that can hold the final string
 // check before if num is 0, the function does not handle 0 as num
 // this function does not malloc!
@@ -64,3 +66,7 @@ bool compile_regex(void);
 
 // encapsulating error reporting
 bool exec_regex(const regex_t *regex, const char *match);
+
+const char *get_state_string(int state);
+
+void log_state(int state);

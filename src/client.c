@@ -53,8 +53,6 @@ void accept_client(int proxy_fd)
       }
     }
 
-    // TODO: think what if the client does not make a request forever
-
     if (!set_non_block(conn->client.fd))
     {
       free_conn(&conn);
@@ -138,7 +136,7 @@ void read_request(Connection *conn)
   if (read_status == 0)
   { // client disconnect
     conn->state = CLOSE_CONN;
-    err("read", "Client EOF received");
+    warn("read", "Client EOF received");
     return;
   }
 
