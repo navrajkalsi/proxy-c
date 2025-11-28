@@ -447,3 +447,24 @@ void check_conn(Connection *conn)
   else
     conn->state = CLOSE_CONN;
 }
+
+void print_endpoint(const Endpoint *endpoint)
+{
+  if (!endpoint)
+    return;
+
+  puts("\033[1;34mDebug info:\n");
+  printf("\033[1;33mBuffer:\033[0;32m %s\n", endpoint->buffer);
+  printf("\033[1;33mHeaders:\033[0;32m %.*s\n", (int)endpoint->headers.len, endpoint->headers.data);
+  printf("\033[1;33mHeaders len:\033[0;32m %ld\n", endpoint->headers.len);
+  printf("\033[1;33mRead index:\033[0;32m %ld\n", endpoint->read_index);
+  printf("\033[1;33mWrite index:\033[0;32m %ld\n", endpoint->write_index);
+  printf("\033[1;33mTo read:\033[0;32m %zu\n", endpoint->to_read);
+  printf("\033[1;33mTo write:\033[0;32m %zu\n", endpoint->to_write);
+  printf("\033[1;33mNext index:\033[0;32m %ld\n", endpoint->next_index);
+  printf("\033[1;33mContent len:\033[0;32m %zu\n", endpoint->content_len);
+  printf("\033[1;33mChunked:\033[0;32m %s\n", endpoint->chunked ? "true" : "false");
+  printf("\033[1;33mHeaders found:\033[0;32m %s\n", endpoint->headers_found ? "true" : "false");
+  printf("\033[1;33mLast chunk found:\033[0;32m %s\n", endpoint->last_chunk_found);
+  puts("\033[1;34mEnd\n\033[0m");
+}

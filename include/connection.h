@@ -115,3 +115,6 @@ bool parse_headers(Connection *conn, Endpoint *endpoint);
 
 // used to continue the conn, if keep alive is true
 void check_conn(Connection *conn);
+
+// for debugging
+void print_endpoint(const Endpoint *endpoint);

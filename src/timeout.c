@@ -35,7 +35,7 @@ void enqueue_timeout(Timeout *timeout)
   }
 
   while (current->next && EXPIRES(timeout) > EXPIRES(current->next))
-    ; // look for nearest ttl
+    current = current->next; // look for nearest ttl
 
   if (!current->next)
     timeouts_tail = timeout;
