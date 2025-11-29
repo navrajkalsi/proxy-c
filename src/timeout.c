@@ -5,6 +5,7 @@
 #include "main.h"
 #include "proxy.h"
 #include "timeout.h"
+#include "utils.h"
 
 // see TimeoutType enum for order
 const int TimeoutVals[TIMEOUTTYPES] = {15, 10, 30, 10, 45};
@@ -67,15 +68,20 @@ void clear_expired(void)
 
   while ((current = dequeue_timeout()))
   {
+    warn("clear_timeout", current->type == CONNECTION ? "Connection timeout" : "State timeout");
     Connection *conn = current->conn;
     if (current->type == REQUEST_READ || current->type == REQUEST_WRITE)
+    {
       conn->status = 408;
+      conn->state = WRITE_ERROR;
+    }
     else if (current->type == RESPONSE_READ || current->type == RESPONSE_WRITE)
-      conn->status = 504;
+      // don't write in case of upstream error, as partial response might be written & error might
+      // overlap
+      conn->state = CLOSE_CONN;
     else // overall conn timeout
-      conn->status = 500;
+      conn->state = CLOSE_CONN;
 
-    conn->state = WRITE_ERROR;
     handle_state(conn);
   }
 }

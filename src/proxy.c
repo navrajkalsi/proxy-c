@@ -272,7 +272,6 @@ again:
 
   case CHECK_CONN:
     check_conn(conn);
-    // TODO: think about keep-alive
     goto again;
 
   case CLOSE_CONN:
