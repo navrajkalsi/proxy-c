@@ -1,7 +1,9 @@
 #include "main.h"
+#include "openssl/evp.h"
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <openssl/ssl.h>
 #include <regex.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -17,8 +19,11 @@ Config config = {.port = NULL,
                  .canonical_host = NULL,
                  .accept_all = false,
                  .upstream = NULL,
-                 .log_warnings = false};
+                 .log_warnings = false,
+                 .client_https = false,
+                 .upstream_https = false};
 int EPOLL_FD = -1;
+SSL_CTX *ssl_context = NULL;
 regex_t origin_regex;
 
 int main(int argc, char *argv[])
@@ -72,7 +77,9 @@ int main(int argc, char *argv[])
   free_upstream_addrinfo();
   free_active_conns();
   free_config(&config);
+  if (ssl_context)
+    SSL_CTX_free(ssl_context);
   regfree(&origin_regex);
-
+  EVP_cleanup();
   return 0;
 }

@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <openssl/ssl.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -151,7 +152,10 @@ void read_response(Connection *conn)
   size_t max_read = BUFFER_SIZE - (size_t)upstream->read_index - 1;
 
   while ((max_read -= (size_t)read_status) &&
-         (read_status = read(upstream->fd, upstream->buffer + upstream->read_index, max_read)) > 0)
+         (read_status =
+              upstream->ssl
+                  ? SSL_read(upstream->ssl, upstream->buffer + upstream->read_index, (int)max_read)
+                  : read(upstream->fd, upstream->buffer + upstream->read_index, max_read)) > 0)
   {
     {
       upstream->read_index += read_status;
@@ -343,13 +347,16 @@ bool write_error_response(Connection *conn)
   if (!conn)
     return set_efault();
 
-  Endpoint *upstream = &conn->upstream;
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
   ssize_t write_status = 0;
 
   while ((upstream->to_write -= (size_t)write_status) &&
-         (write_status = write(conn->client.fd, upstream->buffer + upstream->write_index,
-                               upstream->to_write)) > 0)
+         (write_status = client->ssl
+                             ? SSL_write(client->ssl, upstream->buffer + upstream->write_index,
+                                         (int)upstream->to_write)
+                             : write(client->fd, upstream->buffer + upstream->write_index,
+                                     upstream->to_write)) > 0)
     upstream->write_index += write_status;
 
   if (!write_status)
@@ -387,8 +394,11 @@ void write_response(Connection *conn)
   ssize_t write_status = 0;
 
   while ((upstream->to_write -= (size_t)write_status) &&
-         (write_status =
-              write(client->fd, upstream->buffer + upstream->write_index, upstream->to_write)) > 0)
+         (write_status = client->ssl
+                             ? SSL_write(client->ssl, upstream->buffer + upstream->write_index,
+                                         (int)upstream->to_write)
+                             : write(client->fd, upstream->buffer + upstream->write_index,
+                                     upstream->to_write)) > 0)
     upstream->write_index += write_status;
 
   if (!write_status)

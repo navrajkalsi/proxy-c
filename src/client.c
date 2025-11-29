@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <openssl/ssl.h>
 #include <regex.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -18,6 +19,7 @@
 #include "connection.h"
 #include "http.h"
 #include "main.h"
+#include "proxy.h"
 #include "utils.h"
 
 void accept_client(int proxy_fd)
@@ -60,12 +62,9 @@ void accept_client(int proxy_fd)
       continue;
     }
 
-    if (!add_to_epoll(conn, conn->client.fd, READ_FLAGS))
-    {
-      free_conn(&conn);
-      err("add_to_epoll", NULL);
-      continue;
-    }
+    // new conn should start with TLS_CLIENT
+    conn->state = TLS_CLIENT;
+    handle_state(conn);
   }
 
   return;
@@ -91,7 +90,10 @@ void read_request(Connection *conn)
 
   // new request should always start from the beginning of the buffer
   while (client->to_read &&
-         (read_status = read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
+         (read_status =
+              client->ssl
+                  ? SSL_read(client->ssl, client->buffer + client->read_index, (int)client->to_read)
+                  : read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
   {
     client->buffer[client->read_index + read_status] = '\0';
     client->read_index += client->headers_found ? 0 : read_status;
@@ -246,8 +248,11 @@ void write_request(Connection *conn)
   ssize_t write_status = 0;
 
   while ((client->to_write -= (size_t)write_status) &&
-         (write_status =
-              write(upstream->fd, client->buffer + client->write_index, client->to_write)) > 0)
+         (write_status = upstream->ssl
+                             ? SSL_write(upstream->ssl, client->buffer + client->write_index,
+                                         (int)client->to_write)
+                             : write(upstream->fd, client->buffer + client->write_index,
+                                     client->to_write)) > 0)
     client->write_index += write_status;
 
   if (!write_status)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openssl/crypto.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <sys/socket.h>
@@ -12,10 +13,12 @@
 typedef enum
 {
   ACCEPT_CLIENT, // only if proxy_fd is set
+  TLS_CLIENT,
   READ_REQUEST,
   VERIFY_REQUEST,
   WRITE_ERROR,
   CONNECT_UPSTREAM,
+  TLS_UPSTREAM,
   WRITE_REQUEST,
   READ_RESPONSE,
   WRITE_RESPONSE,
@@ -26,13 +29,14 @@ typedef enum
 typedef struct endpoint
 {
   char buffer[BUFFER_SIZE];
+  SSL *ssl;
   int fd;
   Str headers;           // buffer may contain more bytes than this
   ptrdiff_t read_index;  // where to start reading again
   ptrdiff_t write_index; // where to start writing from
   size_t to_read;        // more bytes to read, incase content-length is provided
   size_t to_write;       // bytes remaining to write, across writes
-  ptrdiff_t next_index;  // incase 2 requests/responses arrive back to back
+  ptrdiff_t next_index;  // incase 2 or more requests/responses arrive back to back
   size_t content_len;    // for client - len of req body,upstream - len of res body
   bool chunked;          // transfer encoding
   bool headers_found;    // if nothing more is needed to be read from the current request,
@@ -118,3 +122,8 @@ void check_conn(Connection *conn);
 
 // for debugging
 void print_endpoint(const Endpoint *endpoint);
+
+// setups ssl object for the specific endpoint
+// DOES NOT verify, if the config option is set to true or not
+// verify before calling
+bool setup_endpoint_tls(Endpoint *endpoint);

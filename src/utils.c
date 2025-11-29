@@ -211,6 +211,8 @@ const char *get_state_string(int state)
   {
   case ACCEPT_CLIENT:
     return "accept conn";
+  case TLS_CLIENT:
+    return "tls_client";
   case READ_REQUEST:
     return "read_request";
   case VERIFY_REQUEST:
@@ -219,6 +221,8 @@ const char *get_state_string(int state)
     return "write_error";
   case CONNECT_UPSTREAM:
     return "connect_upstream";
+  case TLS_UPSTREAM:
+    return "tls_upstream";
   case WRITE_REQUEST:
     return "write_request";
   case READ_RESPONSE:

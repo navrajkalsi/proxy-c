@@ -2,6 +2,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -467,4 +469,31 @@ void print_endpoint(const Endpoint *endpoint)
   printf("\033[1;33mHeaders found:\033[0;32m %s\n", endpoint->headers_found ? "true" : "false");
   printf("\033[1;33mLast chunk found:\033[0;32m %s\n", endpoint->last_chunk_found);
   puts("\033[1;34mEnd\n\033[0m");
+}
+
+bool setup_endpoint_tls(Endpoint *endpoint)
+{
+  if (!endpoint)
+    return err("verify_endpoint", "NULL endpoint pointer passed.");
+
+  if (ssl_context)
+  {
+    if (!(endpoint->ssl = SSL_new(ssl_context)))
+    { // endpoint.ssl will be free during close_conn, no need to handle here in case of error
+      ERR_print_errors_fp(stderr);
+      return err("SSL_new", NULL);
+    }
+    else if (!SSL_set_fd(endpoint->ssl, endpoint->fd))
+    {
+      ERR_print_errors_fp(stderr);
+      return err("SSL_set_fd", NULL);
+    }
+    else if (!SSL_accept(endpoint->ssl))
+    {
+      ERR_print_errors_fp(stderr);
+      return err("SSL_accept", NULL);
+    }
+  }
+
+  return true;
 }

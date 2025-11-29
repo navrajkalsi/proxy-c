@@ -23,7 +23,7 @@ OBJ := $(SRC:.c=.o)
 # CFLAGS ?= -Wall -Werror -Wextra -Iinclude
 # Dev Flags
 CFLAGS ?= -Wall -Werror -Wextra -Wconversion -g -fsanitize=address,undefined -Iinclude
-# LDFLAGS ?= -lssl -lcrypto
+LDFLAGS ?= -lssl -lcrypto
 
 # custom domain certificate & private key
 # TO BE PASSED WHILE COMPILATION!

@@ -9,6 +9,8 @@ typedef struct config
   char *upstream;
   bool accept_all;
   bool log_warnings;
+  bool client_https;
+  bool upstream_https;
 } Config;
 
 Config parse_args(int argc, char *argv[]);

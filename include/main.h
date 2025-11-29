@@ -1,5 +1,6 @@
 #pragma once
 
+#include "openssl/crypto.h"
 #include <regex.h>
 #include <stdbool.h>
 
@@ -47,6 +48,12 @@
 #define MAX_EVENTS 32
 #define MAX_CONNECTIONS 256
 #define FALLBACK_UPSTREAM_PORT "80" // change this to 443 after SSL
+#ifndef DOMAIN_CERT
+#define DOMAIN_CERT "/etc/ssl/domain/domain.cert"
+#endif
+#ifndef PRIVATE_KEY
+#define PRIVATE_KEY "/etc/ssl/domain/private.key"
+#endif
 
 // client.h specific
 #define TRAILER "\r\n\r\n"
@@ -69,3 +76,4 @@
 extern bool RUNNING;
 extern Config config;
 extern regex_t origin_regex;
+extern SSL_CTX *ssl_context;

@@ -17,12 +17,14 @@ Config parse_args(int argc, char *argv[])
                    .canonical_host = NULL,
                    .upstream = NULL,
                    .accept_all = false,
-                   .log_warnings = false};
+                   .log_warnings = false,
+                   .client_https = false,
+                   .upstream_https = false};
 
   int arg;
   unsigned int args_parsed = 0;
 
-  while ((arg = getopt(argc, argv, "ac:hp:u:vw")) != -1)
+  while ((arg = getopt(argc, argv, "ac:hp:sSu:vw")) != -1)
     switch (arg)
     {
     case 'a':
@@ -51,6 +53,14 @@ Config parse_args(int argc, char *argv[])
         exit(EXIT_FAILURE);
       }
       config.port = strdup(optarg);
+      args_parsed++;
+      break;
+    case 's':
+      config.client_https = true;
+      args_parsed++;
+      break;
+    case 'S':
+      config.upstream_https = true;
       args_parsed++;
       break;
     case 'u':
@@ -138,6 +148,8 @@ void print_usage(const char *prg)
          "-c             Canonical Host to redirect requests to."
          "-h             Print this help message.\n"
          "-p <port>      Port to listen on.\n"
+         "-s             Use HTTPS Protocol for client side.\n"
+         "-S             Use HTTPS Protocol for server side.\n"
          "-u <upstream>  Server URL to contact for response.\n"
          "-v             Print the version number.\n"
          "-w             Print warnings with errors.\n",
@@ -155,8 +167,11 @@ void print_args(unsigned int args_parsed, const Config *config)
   printf("\nCanonical Host set to: %s\n"
          "Upstream URL set to: %s\n"
          "Listening Port set to: %s\n"
+         "Client side protocol set to: %s\n"
+         "Upstream side protocol set to: %s\n"
          "Log Warnings set to: %s\n",
          config->canonical_host, config->upstream, config->port,
+         config->client_https ? "HTTPS" : "HTTP", config->upstream_https ? "HTTPS" : "HTTP",
          config->log_warnings ? "true" : "false");
 
   config->accept_all ? puts("Proxy Accepting Incoming Connections from all IPs.\n")

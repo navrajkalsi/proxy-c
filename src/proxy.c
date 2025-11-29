@@ -1,3 +1,5 @@
+#include "openssl/err.h"
+#include "openssl/ssl.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -17,10 +19,73 @@
 #include "upstream.h"
 #include "utils.h"
 
-bool setup_proxy(Config *config, int *proxy_fd)
+SSL_CTX *setup_tls(void)
+{
+  if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL) != 1)
+  {
+    err("OPENSSL_init_ssl", NULL);
+    return NULL;
+  }
+
+  const SSL_METHOD *method = TLS_server_method(); // enables TLS support
+  SSL_CTX *context = SSL_CTX_new(method); // the context stores all certs & keys for the conns
+
+  if (!context)
+  {
+    err("SSL_CTX_new", NULL);
+    ERR_print_errors_fp(stderr);
+    return NULL;
+  }
+
+  // setting minimum version for TLS (TLS 1.2)
+  if (SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION) != 1)
+  {
+    err("SSL_CTX_set_min_proto_version", NULL);
+    goto cleanup;
+  }
+
+  // using strong cipher suites
+  if (SSL_CTX_set_cipher_list(context, "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4") != 1)
+  {
+    err("SSL_CTX_set_cipher_list", NULL);
+    goto cleanup;
+  }
+
+  if (SSL_CTX_use_certificate_file(context, DOMAIN_CERT, SSL_FILETYPE_PEM) != 1)
+  {
+    err("SSL_CTX_use_certificate_file", NULL);
+    goto cleanup;
+  }
+
+  if (SSL_CTX_use_PrivateKey_file(context, PRIVATE_KEY, SSL_FILETYPE_PEM) != 1)
+  {
+    err("SSL_CTX_use_PrivateKey_file", NULL);
+    goto cleanup;
+  }
+
+  // sanity check, if key & cert match
+  if (SSL_CTX_check_private_key(context) != 1)
+  {
+    err("SSL_CTX_check_private_key", NULL);
+    goto cleanup;
+  }
+
+  return context;
+
+cleanup:
+  ERR_print_errors_fp(stderr);
+  SSL_CTX_free(context);
+  return NULL;
+}
+
+bool setup_proxy(const Config *config, int *proxy_fd)
 {
   if (!config || !proxy_fd)
     return set_efault();
+
+  if (config->client_https || config->upstream_https)
+    if (!(ssl_context = setup_tls()))
+      return err("setup_ssl", NULL);
 
   struct addrinfo hints, *out, *current;
   memset(&hints, 0, sizeof hints);
@@ -220,13 +285,26 @@ again:
     err("verify_state", "Cannot accept client in handle_state. Logic error");
     break;
 
+  case TLS_CLIENT:
+    if (!config.client_https || (config.client_https && setup_endpoint_tls(&conn->client)))
+    {
+      add_to_epoll(conn, *client_fd, READ_FLAGS);
+      conn->state = READ_REQUEST;
+    }
+    else
+    { // for client error cannot send any response, just close
+      err("setup_endpoint_tls", NULL);
+      conn->state = CLOSE_CONN;
+    }
+    break;
+
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);
     start_state_timeout(conn, REQUEST_READ);
     break;
 
   case VERIFY_REQUEST:
-    if (conn->upstream.fd >= 0) // if reusing a upstream from previous res
+    if (*upstream_fd >= 0) // if reusing a upstream from previous res
       conn->state = WRITE_REQUEST;
     else if (verify_request(conn))
       conn->state = CONNECT_UPSTREAM;
@@ -244,16 +322,27 @@ again:
 
   case CONNECT_UPSTREAM:
     if (connect_upstream(upstream_fd))
-    {
-      conn->state = WRITE_REQUEST;
-      add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
-    }
+      conn->state = TLS_UPSTREAM;
     else
     {
       conn->status = 500;
       conn->state = WRITE_ERROR;
     }
     goto again;
+
+  case TLS_UPSTREAM:
+    if (!config.upstream_https || (config.upstream_https && setup_endpoint_tls(&conn->upstream)))
+    {
+      add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
+      conn->state = WRITE_REQUEST;
+    }
+    else
+    { // for upstream error, send error response to client
+      err("setup_endpoint_tls", NULL);
+      conn->status = 500;
+      conn->state = WRITE_ERROR;
+    }
+    break;
 
   case WRITE_REQUEST:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
