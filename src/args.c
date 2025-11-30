@@ -152,7 +152,7 @@ void print_usage(const char *prg)
          "-S             Use HTTPS Protocol for server side.\n"
          "-u <upstream>  Server URL to contact for response.\n"
          "-v             Print the version number.\n"
-         "-w             Print warnings with errors.\n",
+         "-w             Print all warnings with errors.\n",
          prg);
 }
 

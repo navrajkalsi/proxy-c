@@ -6,22 +6,20 @@
 
 #include "args.h"
 
-#define VERSION "0.5"
+#define VERSION "1.0"
 
 // args.h specific
 #ifndef DEFAULT_PORT
 #define DEFAULT_PORT "1419"
 #endif
 #ifndef DEFAULT_CANONICAL_HOST // host header to look for in requests
-#define DEFAULT_CANONICAL_HOST "https://domain.com"
+#define DEFAULT_CANONICAL_HOST "https://example.com"
 #endif
-#ifndef DEFAULT_UPSTREAM // server to contact, can be same as host
-#define DEFAULT_UPSTREAM "localhost:8080"
+#ifndef DEFAULT_UPSTREAM // server to contact, can be different from canonical host
+#define DEFAULT_UPSTREAM DEFAULT_CANONICAL_HOST
 #endif
-#ifndef ORIGIN_REGEX
 #define ORIGIN_REGEX                                                                               \
   "^(https?:\\/\\/)?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?\\/?$"
-#endif
 
 // http.h specific
 #define FALLBACK_HTTP_VER "HTTP/1.1"
@@ -29,9 +27,6 @@
 #define DATE_LEN 30 // len of date + a null terminator
 
 // utils.h specific
-#ifndef TERMINAL_WIDTH
-#define TERMINAL_WIDTH 80
-#endif
 #define ERR_STR (Str){NULL, 0}
 #define STR(str)                                                                                   \
   (Str) { str, (ptrdiff_t)(sizeof(str) - 1) }

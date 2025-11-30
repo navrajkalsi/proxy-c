@@ -67,6 +67,18 @@ void free_conn(Connection **conn)
   remove_timeout(&to_free->conn_timeout);
   remove_timeout(&to_free->state_timeout);
 
+  if (to_free->client.ssl)
+  {
+    SSL_shutdown(to_free->client.ssl);
+    SSL_free(to_free->client.ssl);
+  }
+
+  if (to_free->upstream.ssl)
+  {
+    SSL_shutdown(to_free->upstream.ssl);
+    SSL_free(to_free->upstream.ssl);
+  }
+
   free(to_free);
   to_free = NULL;
 }
