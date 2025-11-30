@@ -1,6 +1,6 @@
 # Proxy-C
 
-<!-- ![Proxy Demo](./media/demo.gif) -->
+![Proxy Demo](./media/demo.gif)
 
 A single-threaded reverse proxy written in C, based on the __reactor pattern__ using __Linux's Epoll__ mechanism.
 Full __asynchronous__ state handling, supports HTTPS and canonical name redirection for one host.
@@ -144,10 +144,10 @@ proxy-c -a -c localhost:8080 -p 8080 -S -u https://example.com
 * Matches the host header of each request against __localhost:8080__.
 * Uses __HTTPS__ only for server side operations.
 
-<!-- <br> -->
+<br>
 
-<!-- ### Demo -->
-<!-- ![Proxy Demo](./media/demo.gif) -->
+### Demo
+![Proxy Demo](./media/demo.gif)
 
 <!-- <br> -->
 
