@@ -20,11 +20,20 @@ INSTALL ?= install
 NAME := proxy-c
 SRC := $(wildcard src/*.c)
 OBJ := $(SRC:.c=.o)
-# CFLAGS ?= -Wall -Werror -Wextra -Iinclude
+CFLAGS ?= -Wall -Werror -Wextra -Iinclude -g -o2
 # Dev Flags
-CFLAGS ?= -Wall -Werror -Wextra -Wconversion -g -fsanitize=address,undefined -Iinclude
+# CFLAGS ?= -Wall -Werror -Wextra -Wconversion -g -fsanitize=address,undefined -Iinclude
 LDFLAGS ?= -lssl -lcrypto
 
+ifdef DEFAULT_PORT
+	CFLAGS += -DDEFAULT_PORT="\"$(DEFAULT_PORT)\""
+endif
+ifdef DEFAULT_CANONICAL_HOST
+	CFLAGS += -DDEFAULT_CANONICAL_HOST="\"$(DEFAULT_CANONICAL_HOST)\""
+endif
+ifdef DEFAULT_UPSTREAM
+	CFLAGS += -DDEFAULT_UPSTREAM="\"$(DEFAULT_UPSTREAM)\""
+endif
 # custom domain certificate & private key
 # TO BE PASSED WHILE COMPILATION!
 ifdef DOMAIN_CERT
