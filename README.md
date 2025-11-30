@@ -139,7 +139,7 @@ proxy-c -a -c localhost:8080 -p 8080 -S -u https://example.com
 ```
 * Loads address information for __https://example.com__.
 * Starts listening for clients on port __8080__.
-* Listens to request from _all__ IPs.
+* Listens to request from __all__ IPs.
 * Uses __HTTP__ only for client side operations.
 * Matches the host header of each request against __localhost:8080__.
 * Uses __HTTPS__ only for server side operations.
