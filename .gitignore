@@ -3,3 +3,4 @@ proxy-c
 test
 test/
 *.o
+changes.txt

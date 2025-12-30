@@ -28,6 +28,7 @@
 
 // utils.h specific
 #define ERR_STR (Str){NULL, 0}
+#define NULL_STR (Str){NULL, 0}
 #define STR(str)                                                                                   \
   (Str) { str, (ptrdiff_t)(sizeof(str) - 1) }
 

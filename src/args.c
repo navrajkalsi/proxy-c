@@ -142,10 +142,10 @@ void print_usage(const char *prg)
   if (!prg)
     return (void)err("print_usage", "NULL program pointer passed");
 
-  printf("\nUsage: %s [OPTIONS] [ARGS...]\n"
+  printf("\nUsage: %s [OPTIONS] [ARGS...]\n\n"
          "Options:\n"
          "-a             Accept Incoming Connections from all IPs, defaults to Localhost only.\n"
-         "-c             Canonical Host to redirect requests to."
+         "-c             Canonical Host to redirect requests to.\n"
          "-h             Print this help message.\n"
          "-p <port>      Port to listen on.\n"
          "-s             Use HTTPS Protocol for client side.\n"
