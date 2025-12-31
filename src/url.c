@@ -1,70 +1,117 @@
 #include <assert.h>
 
+#include "bits.h"
 #include "main.h"
+#include "str.h"
 #include "url.h"
+#include "utils.h"
 
-URL parse_url(Str str)
+// corresponding to url_delimiters enum
+const Str delimiters[DELIMITERS_LEN] = {STR("://"), STR(":"), STR("/"), STR("?"), STR("#")};
+
+bool parse_url(Str str, URL *url)
 {
-  URL url = {.protocol = NULL_STR,
-             .host = NULL_STR,
-             .port = NULL_STR,
-             .path = NULL_STR,
-             .params = NULL_STR,
-             .frags = NULL_STR};
+  url->protocol = url->host = url->port = url->path = url->params = url->frags = NULL_STR;
 
   if (!str.len)
-    return url;
+    return false;
 
-  Str delimiters[] = {STR("://"), STR(":"), STR("/"), STR("?"), STR("#")};
-  ptrdiff_t delimiters_len = sizeof delimiters / sizeof(struct str);
-
+  uint8_t tracker = 0u, *tracker_p = &tracker;
+  int last_found = -1;
   Str next = str;
 
-  for (ptrdiff_t i = 0; i < delimiters_len && next.len; ++i)
+  for (ptrdiff_t i = 0; i < DELIMITERS_LEN && next.len; ++i)
   {
-    // only try to cut params and frags if host is found ( / or : was detected before)
-    if (i == 3 || i == 4)
-      assert(url.host.len);
-
     Str delimiter = delimiters[i];
     Cut cut = cut_str(next, delimiter);
 
     if (!cut.found)
+    { // if delimiter is found elsewhere, then url is invalid, as they must be in order
+      // if (contains(str, delimiter))
+      //   return err("parse_url_delimiter_check", "Malformed URL");
       continue;
+    }
 
-    // Change here in future, if delimiters array changes
-    if (i == 0)
+    last_found = i;
+
+    switch (i)
     {
-      url.protocol = cut.head;
-      url.host = cut.tail;
-    }
-    else if (i == 1)
-    {
-      url.host = cut.head;
-      url.port = cut.tail;
-    }
-    else if (i == 2)
-    { // host can be delimited by : and /, if / is detected and host is null, then the head is
+    case COLON_SLASHES:
+      url->protocol = cut.head;
+      break;
+
+    case COLON:
+      url->host = cut.head;
+      break;
+
+    case SLASH:
+      // host can be delimited by : and /, if / is detected and host is null, then the head is
       // choosen as host
-      if (!url.host.len)
-        url.host = cut.head;
+      if (read_bit(tracker_p, COLON))
+        url->port = cut.head;
       else
-        url.port = cut.head;
-      url.path = cut.tail;
+        url->host = cut.head;
+      url->path = cut.tail;
+      break;
+
+    case QUES:
+      // host must have been detected at this point
+      if (!read_bit(tracker_p, COLON) && !read_bit(tracker_p, SLASH))
+        return err("parse_url_switch", "Malformed URL");
+      url->path = cut.head;
+      break;
+
+    case HASH:
+      if (!read_bit(tracker_p, COLON) && !read_bit(tracker_p, SLASH))
+        return err("parse_url_switch", "Malformed URL");
+      url->params = cut.head;
+      url->frags = cut.tail;
+      break;
+
+    default:
+      return err("parse_url_switch", "Logic Error! Unknown delimiter");
     }
-    else if (i == 3)
-    {
-      url.path = cut.head;
-      url.params = cut.tail;
-    }
-    else
-    {
-      url.params = cut.head;
-      url.frags = cut.tail;
-    }
+
+    set_bit(tracker_p, i);
 
     next = cut.tail;
+
+    // only path can be empty, rest of the sections need something
+    if (i == QUES)
+      continue;
+
+    if (!cut.head.len)
+      return err("parse_url_verify", "Empty section detected in the URL");
   }
 
-  return url;
+  // no delimiter found, treat the whole str as host
+  if (!tracker)
+    url->host = str;
+  else
+  {
+    if (!next.len && last_found != SLASH) // last section empty, only path can be empty
+      return err("parse_url_verify", "Empty section detected in the URL");
+
+    // assign last section
+    switch (last_found)
+    {
+    case COLON_SLASHES:
+      url->host = next;
+      break;
+    case COLON:
+      url->port = next;
+      break;
+    case SLASH:
+      url->path = next;
+      break;
+    case QUES:
+      url->params = next;
+      break;
+    case HASH:
+      url->frags = next;
+      break;
+    }
+  }
+
+  return true;
 }
