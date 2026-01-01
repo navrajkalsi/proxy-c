@@ -17,7 +17,7 @@ typedef struct cut
   bool found;
 } Cut;
 
-void print_str(const Str *str);
+void put_str(const Str *str);
 
 // not including char at upto
 Str get_head(Str str, ptrdiff_t upto);

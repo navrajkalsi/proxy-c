@@ -12,23 +12,20 @@ typedef enum url_delimiters
   DELIMITERS_LEN
 } URL_DELIMITERS;
 
-// array of delimiters corresponding with url_delimiters
-const Str delimiters[DELIMITERS_LEN];
-
 typedef struct url
 {
-  Str protocol, host, port, path, params, frags;
+  Str unparsed, protocol, host, port, path, params, frags;
 } URL;
 
-typedef struct origin
+typedef struct host
 {
-  Str protocol, host, port;
-} Origin;
+  Str unparsed, host, port;
+} Host;
 
 bool parse_url(Str str, URL *url);
 
-// fills fields of origin from url
-void extract_origin(URL *url, Origin *origin);
+// fills fields of host from url
+void extract_host(URL *url, Host *host);
 
 bool validate_url(const URL *url);
 
@@ -38,5 +35,5 @@ bool validate_protocol(Str protocol);
 // is host reachable
 bool validate_host(Str host);
 
-// can also be used to get the port in long, if successfull
-bool validate_port(Str port, long *port_num);
+// can also be used to get the port in long, if successfull and port_out is a valid pointer
+bool validate_port(Str port, long *port_out);

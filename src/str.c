@@ -1,10 +1,11 @@
 #include <assert.h> //
+#include <stdio.h>  //
 #include <string.h> //
 
 #include "main.h" //
 #include "str.h"  //
 
-void print_str(const Str *str)
+void put_str(const Str *str)
 {
   if (str)
     printf("%.*s\n", (int)str->len, str->data);

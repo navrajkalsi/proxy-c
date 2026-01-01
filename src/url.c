@@ -14,6 +14,7 @@ const Str delimiters[DELIMITERS_LEN] = {STR("://"), STR(":"), STR("/"), STR("?")
 bool parse_url(Str str, URL *url)
 {
   assert(url);
+  url->unparsed = str;
   url->protocol = url->host = url->port = url->path = url->params = url->frags = NULL_STR;
 
   if (!str.len)
@@ -67,7 +68,10 @@ bool parse_url(Str str, URL *url)
     case HASH:
       if (!read_bit(tracker_p, COLON) && !read_bit(tracker_p, SLASH))
         return err("parse_url_switch", "Malformed URL");
-      url->params = cut.head;
+      if (read_bit(tracker_p, QUES))
+        url->params = cut.head;
+      else
+        url->path = cut.head;
       url->frags = cut.tail;
       break;
 
@@ -119,13 +123,13 @@ bool parse_url(Str str, URL *url)
   return true;
 }
 
-void extract_origin(URL *url, Origin *origin)
+void extract_host(URL *url, Host *host)
 {
-  assert(url && origin);
+  assert(url && host);
 
-  origin->protocol = url->protocol;
-  origin->host = url->host;
-  origin->port = url->port;
+  host->unparsed = url->unparsed;
+  host->host = url->host;
+  host->port = url->port;
 }
 
 bool validate_protocol(Str protocol)
@@ -148,7 +152,7 @@ bool validate_host(Str host)
   return status == 0 || err("getaddrinfo", gai_strerror(status));
 }
 
-bool validate_port(Str port, long *port_num)
+bool validate_port(Str port, long *port_out)
 {
   assert(port.len);
 
@@ -157,7 +161,7 @@ bool validate_port(Str port, long *port_num)
   string[port.len] = '\0';
 
   char *end = NULL;
-  *port_num = strtol(string, &end, 10);
+  const long port_num = strtol(string, &end, 10);
 
   if (end == string) // comparing pointers
     return err("strtol", "No conversion performed");
@@ -165,8 +169,11 @@ bool validate_port(Str port, long *port_num)
   if (*end != '\0')
     return err("strtol", "Supplied port is not a decimal number");
 
-  if (*port_num < 0 || *port_num > 65535)
+  if (port_num < 0 || port_num > 65535)
     return err("verify_port", "Port is out of range");
+
+  if (port_out)
+    *port_out = port_num;
 
   return true;
 }

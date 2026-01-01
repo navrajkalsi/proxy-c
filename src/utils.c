@@ -2,9 +2,10 @@
 #include <signal.h> //
 #include <stddef.h> //
 #include <stdio.h>  //
+#include <stdlib.h> //
 #include <string.h> //
 
-#include "main.h"  //
+#include "proxy.h" //
 #include "utils.h" //
 
 bool err(const char *function, const char *error)
@@ -17,6 +18,12 @@ bool err(const char *function, const char *error)
     fputs("\033[1;31mUnknown error\033[0m", stderr);
 
   return false;
+}
+
+void err_n_exit(const char *function, const char *error)
+{
+  err(function, error);
+  exit(EXIT_FAILURE);
 }
 
 bool warn(const char *function, const char *warning)

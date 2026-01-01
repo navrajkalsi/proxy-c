@@ -1,9 +1,12 @@
-#include "main.h" //
+#include "main.h"  //
+#include "args.h"  //
+#include "proxy.h" //
+#include "utils.h" //
 
 bool RUNNING = true;
-Config config = {.canonical_origin = {.protocol = NULL_STR, .host = NULL_STR, .port = NULL_STR},
+Config config = {.canonical_host = {.host = NULL_STR, .port = NULL_STR},
+                 .upstream_host = {.host = NULL_STR, .port = NULL_STR},
                  .listen_port = NULL_STR,
-                 .upstream = NULL_STR,
                  .accept_all = false,
                  .log_warnings = false,
                  .client_https = false,
@@ -14,8 +17,8 @@ Config config = {.canonical_origin = {.protocol = NULL_STR, .host = NULL_STR, .p
 
 int main(int argc, char *argv[])
 {
-  // print_banner();
-  //
+  print_banner();
+
   // if (!setup_sig_handler())
   // {
   //   err("setup_sig_handler", strerror(errno));
@@ -25,7 +28,7 @@ int main(int argc, char *argv[])
   // if (!compile_regex())
   //   return -1;
   //
-  // config = parse_args(argc, argv);
+  parse_args(argc, argv);
   //
   // int proxy_fd = -1;
   //

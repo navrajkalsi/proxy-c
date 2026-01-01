@@ -1,16 +1,22 @@
+#include <assert.h> //
+#include <ctype.h>  //
 #include <getopt.h> //
+#include <stdio.h>  //
 #include <stdlib.h> //
 #include <string.h> //
 
-#include "args.h" //
-#include "main.h"
-#include "url.h"
+#include "args.h"  //
+#include "main.h"  //
+#include "proxy.h" //
+#include "url.h"   //
 #include "utils.h" //
 
 void parse_args(int argc, char *argv[])
 {
   int arg;
   unsigned int args_parsed = 0;
+  URL url = {0};      // for parsing hosts
+  Str str = NULL_STR; // for parsing hosts
 
   while ((arg = getopt(argc, argv, "ac:hp:sSu:vw")) != -1)
     switch (arg)
@@ -20,41 +26,27 @@ void parse_args(int argc, char *argv[])
       args_parsed++;
       break;
     case 'c':
-      URL url;
-      Str str = (Str){strdup(optarg), strlen(optarg)};
+      str = (Str){strdup(optarg), strlen(optarg)};
 
-      if (!parse_url(str, &url))
-      {
-        free(str.data);
-        err("parse_url", NULL);
-        free_config(&config);
-        exit(EXIT_FAILURE);
-      }
+      if (!parse_url(str, &url)) // no need to free, program will free at exit
+        err_n_exit("parse_url", NULL);
 
-      if (url.params.len || url.frags.len)
-      {
-        free(str.data);
-        err("verify_url", "Canonical Origin should not contain any query params or fragments");
-        free_config(&config);
-        exit(EXIT_FAILURE);
-      }
+      if (url.protocol.len || url.params.len || url.frags.len)
+        err_n_exit("verify_url", "Canonical Host should only contain host and port(optional)");
 
-      extract_origin(&url, &config.canonical_origin);
-
+      extract_host(&url, &config.canonical_host);
       args_parsed++;
       break;
     case 'h':
       print_usage(argv[0]);
-      free_config(&config);
       exit(EXIT_SUCCESS);
     case 'p':
-      if (!validate_port(optarg))
-      {
-        err("validate_port", strerror(errno));
-        free_config(&config);
-        exit(EXIT_FAILURE);
-      }
-      config.port = strdup(optarg);
+      config.listen_port.data = strdup(optarg);
+      config.listen_port.len = strlen(optarg);
+
+      if (!validate_port(config.listen_port, NULL))
+        err_n_exit("validate_port", NULL);
+
       args_parsed++;
       break;
     case 's':
@@ -66,14 +58,15 @@ void parse_args(int argc, char *argv[])
       args_parsed++;
       break;
     case 'u':
-      if (!exec_regex(&origin_regex, optarg))
-      {
-        err("exec_regex", "Invalid upstream url passed");
-        if (config.port)
-          free(config.port);
-        exit(EXIT_FAILURE);
-      }
-      config.upstream = strdup(optarg);
+      str = (Str){strdup(optarg), strlen(optarg)};
+
+      if (!parse_url(str, &url))
+        err_n_exit("parse_url", NULL);
+
+      if (url.protocol.len || url.params.len || url.frags.len)
+        err_n_exit("verify_url", "Upstream Host should only contain host and port(optional)");
+
+      extract_host(&url, &config.upstream_host);
       args_parsed++;
       break;
     case 'v':
@@ -102,41 +95,44 @@ void parse_args(int argc, char *argv[])
 
   // if not set with flag, verifying default values, using strdup() because
   // config is freed in case of error
-  if (!config.canonical_host)
+  if (!config.canonical_host.host.len)
   {
-    if (!(exec_regex(&origin_regex, DEFAULT_CANONICAL_HOST)))
-    {
-      err("exec_regex", "Compiled canonical host is invalid.");
-      free_config(&config);
-      exit(EXIT_FAILURE);
-    }
-    config.canonical_host = strdup(DEFAULT_CANONICAL_HOST);
+    str = (Str){strdup(DEFAULT_CANONICAL_HOST), strlen(DEFAULT_CANONICAL_HOST)};
+
+    if (!parse_url(str, &url))
+      err_n_exit("parse_url", NULL);
+
+    if (url.protocol.len || url.params.len || url.frags.len)
+      err_n_exit("verify_url",
+                 "Default Canonical Host should only contain host and port number(optional)");
+
+    extract_host(&url, &config.canonical_host);
   }
 
-  if (!config.upstream)
+  if (!config.upstream_host.host.len)
   {
-    if (!(exec_regex(&origin_regex, DEFAULT_UPSTREAM)))
-    {
-      err("exec_regex", "Complied upstream URL is invalid.");
-      free_config(&config);
-      exit(EXIT_FAILURE);
-    }
-    config.upstream = strdup(DEFAULT_UPSTREAM);
+    str = (Str){strdup(DEFAULT_UPSTREAM_HOST), strlen(DEFAULT_UPSTREAM_HOST)};
+
+    if (!parse_url(str, &url))
+      err_n_exit("parse_url", NULL);
+
+    if (url.protocol.len || url.params.len || url.frags.len)
+      err_n_exit("verify_url",
+                 "Default Upstream Host should only contain host and port number(optional)");
+
+    extract_host(&url, &config.upstream_host);
   }
 
-  if (!config.port)
+  if (!config.listen_port.len)
   {
-    if (!(validate_port(DEFAULT_PORT)))
-    {
-      err("validate_port", "Compiled port is invalid");
-      free_config(&config);
-      exit(EXIT_FAILURE);
-    }
-    config.port = strdup(DEFAULT_PORT);
+    config.listen_port.data = strdup(DEFAULT_LISTEN_PORT);
+    config.listen_port.len = strlen(DEFAULT_LISTEN_PORT);
+
+    if (!(validate_port(config.listen_port, NULL)))
+      err_n_exit("validate_port", "Default Listening Port is invalid");
   }
 
-  print_args(args_parsed, &config);
-  return config;
+  print_args(args_parsed);
 }
 
 void print_usage(const char *prg)
@@ -147,50 +143,34 @@ void print_usage(const char *prg)
   printf("\nUsage: %s [OPTIONS] [ARGS...]\n\n"
          "Options:\n"
          "-a             Accept Incoming Connections from all IPs, defaults to Localhost only.\n"
-         "-c             Canonical Host to redirect requests to.\n"
+         "-c             Canonical Host to redirect requests to and match Host header with.\n"
          "-h             Print this help message.\n"
          "-p <port>      Port to listen on.\n"
          "-s             Use HTTPS Protocol for client side.\n"
          "-S             Use HTTPS Protocol for server side.\n"
-         "-u <upstream>  Server URL to contact for response.\n"
+         "-u <upstream>  Upstream Host to contact for response.\n"
          "-v             Print the version number.\n"
          "-w             Print all warnings with errors.\n",
          prg);
 }
 
-void print_args(unsigned int args_parsed, const Config *config)
+void print_args(unsigned int args_parsed)
 {
-  if (!config)
-    return (void)err("print_args", "NULL config pointer passed");
-
   if (args_parsed)
     printf("\nParsed %u Argument(s).", args_parsed);
 
-  printf("\nCanonical Host set to: %s\n"
-         "Upstream URL set to: %s\n"
-         "Listening Port set to: %s\n"
+  printf("\nCanonical Host set to: %.*s\n"
+         "Upstream Host set to: %.*s\n"
+         "Listening Port set to: %.*s\n"
          "Client side protocol set to: %s\n"
          "Upstream side protocol set to: %s\n"
          "Log Warnings set to: %s\n",
-         config->canonical_host, config->upstream, config->port,
-         config->client_https ? "HTTPS" : "HTTP", config->upstream_https ? "HTTPS" : "HTTP",
-         config->log_warnings ? "true" : "false");
+         (int)config.canonical_host.unparsed.len, config.canonical_host.unparsed.data,
+         (int)config.upstream_host.unparsed.len, config.upstream_host.unparsed.data,
+         (int)config.listen_port.len, config.listen_port.data,
+         config.client_https ? "HTTPS" : "HTTP", config.upstream_https ? "HTTPS" : "HTTP",
+         config.log_warnings ? "true" : "false");
 
-  config->accept_all ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
-                     : puts("Proxy Accepting Incoming Connections from Localhost Only.\n");
-}
-
-void free_config(Config *config)
-{
-  if (!config)
-    return;
-
-  if (config->canonical_host)
-    free(config->canonical_host);
-
-  if (config->upstream)
-    free(config->upstream);
-
-  if (config->port)
-    free(config->port);
+  config.accept_all ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
+                    : puts("Proxy Accepting Incoming Connections from Localhost Only.\n");
 }

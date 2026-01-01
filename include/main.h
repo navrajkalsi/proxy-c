@@ -1,17 +1,15 @@
 #pragma once
 
-#include "proxy.h" //
-
 #define VERSION "2.0"
 
-#ifndef DEFAULT_PORT
-#define DEFAULT_PORT "1419"
+#ifndef DEFAULT_LISTEN_PORT
+#define DEFAULT_LISTEN_PORT "1419"
 #endif
-#ifndef DEFAULT_CANONICAL_HOST // host header to look for in requests
-#define DEFAULT_CANONICAL_HOST "https://example.com"
+#ifndef DEFAULT_CANONICAL_HOST
+#define DEFAULT_CANONICAL_HOST "example.com"
 #endif
-#ifndef DEFAULT_UPSTREAM // server to contact, can be different from canonical host
-#define DEFAULT_UPSTREAM DEFAULT_CANONICAL_HOST
+#ifndef DEFAULT_UPSTREAM_HOST
+#define DEFAULT_UPSTREAM_HOST DEFAULT_CANONICAL_HOST
 #endif
 #define ORIGIN_REGEX                                                                               \
   "^(https?:\\/\\/)?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?\\/?$"
@@ -68,6 +66,3 @@
 
 #define HTTP STR("http")
 #define HTTPS STR("https")
-
-extern Config config;
-extern bool RUNNING;
