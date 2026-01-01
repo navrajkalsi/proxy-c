@@ -1,85 +1,71 @@
-#include "main.h"
-#include "openssl/evp.h"
-#include <errno.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <openssl/ssl.h>
-#include <regex.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include "args.h"
-#include "proxy.h"
-#include "upstream.h"
-#include "utils.h"
+#include "main.h" //
 
 bool RUNNING = true;
-Config config = {.port = NULL,
-                 .canonical_host = NULL,
+Config config = {.canonical_origin = {.protocol = NULL_STR, .host = NULL_STR, .port = NULL_STR},
+                 .listen_port = NULL_STR,
+                 .upstream = NULL_STR,
                  .accept_all = false,
-                 .upstream = NULL,
                  .log_warnings = false,
                  .client_https = false,
                  .upstream_https = false};
-int EPOLL_FD = -1;
-SSL_CTX *ssl_context = NULL;
-regex_t origin_regex;
+// int EPOLL_FD = -1;
+// SSL_CTX *ssl_context = NULL;
+// regex_t origin_regex;
 
 int main(int argc, char *argv[])
 {
-  print_banner();
-
-  if (!setup_sig_handler())
-  {
-    err("setup_sig_handler", strerror(errno));
-    return -1;
-  }
-
-  if (!compile_regex())
-    return -1;
-
-  config = parse_args(argc, argv);
-
-  int proxy_fd = -1;
-
-  if (!setup_proxy(&config, &proxy_fd))
-  {
-    err("setup_proxy", NULL);
-    return -1;
-  }
-
-  if (!setup_epoll(proxy_fd))
-  {
-    err("setup_epoll", NULL);
-    return -1;
-  }
-
-  if (EPOLL_FD == -1)
-  {
-    err("verify_epoll_fd", "Epoll fd is not valid");
-    return -1;
-  }
-
-  // loading server info, into global var in proxy.c
-  if (!setup_upstream(config.upstream))
-  {
-    err("setup_upstream", NULL);
-    return -1;
-  }
-
-  if (!start_proxy())
-  {
-    err("start_proxy", strerror(errno));
-    return -1;
-  }
-
-  free_upstream_addrinfo();
-  free_active_conns();
-  free_config(&config);
-  if (ssl_context)
-    SSL_CTX_free(ssl_context);
-  regfree(&origin_regex);
-  EVP_cleanup();
-  return 0;
+  // print_banner();
+  //
+  // if (!setup_sig_handler())
+  // {
+  //   err("setup_sig_handler", strerror(errno));
+  //   return -1;
+  // }
+  //
+  // if (!compile_regex())
+  //   return -1;
+  //
+  // config = parse_args(argc, argv);
+  //
+  // int proxy_fd = -1;
+  //
+  // if (!setup_proxy(&config, &proxy_fd))
+  // {
+  //   err("setup_proxy", NULL);
+  //   return -1;
+  // }
+  //
+  // if (!setup_epoll(proxy_fd))
+  // {
+  //   err("setup_epoll", NULL);
+  //   return -1;
+  // }
+  //
+  // if (EPOLL_FD == -1)
+  // {
+  //   err("verify_epoll_fd", "Epoll fd is not valid");
+  //   return -1;
+  // }
+  //
+  // // loading server info, into global var in proxy.c
+  // if (!setup_upstream(config.upstream))
+  // {
+  //   err("setup_upstream", NULL);
+  //   return -1;
+  // }
+  //
+  // if (!start_proxy())
+  // {
+  //   err("start_proxy", strerror(errno));
+  //   return -1;
+  // }
+  //
+  // free_upstream_addrinfo();
+  // free_active_conns();
+  // free_config(&config);
+  // if (ssl_context)
+  //   SSL_CTX_free(ssl_context);
+  // regfree(&origin_regex);
+  // EVP_cleanup();
+  // return 0;
 }

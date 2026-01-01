@@ -1,14 +1,9 @@
 #pragma once
 
-#include "openssl/crypto.h"
-#include <regex.h>
-#include <stdbool.h>
+#include "proxy.h" //
 
-#include "args.h"
+#define VERSION "2.0"
 
-#define VERSION "1.0"
-
-// args.h specific
 #ifndef DEFAULT_PORT
 #define DEFAULT_PORT "1419"
 #endif
@@ -21,12 +16,10 @@
 #define ORIGIN_REGEX                                                                               \
   "^(https?:\\/\\/)?(www\\.)?(localhost|[-[:alnum:]]+(\\.[[:alpha:]]{2,})+)(:[[:digit:]]+)?\\/?$"
 
-// http.h specific
 #define FALLBACK_HTTP_VER "HTTP/1.1"
 #define SERVER "Proxy-C/" VERSION " (Unix)"
 #define DATE_LEN 30 // len of date + a null terminator
 
-// utils.h specific
 #define ERR_STR (Str){NULL, 0}
 #define NULL_STR (Str){NULL, 0}
 #define STR(str)                                                                                   \
@@ -34,15 +27,18 @@
   {                                                                                                \
     str, (ptrdiff_t)(sizeof(str) - 1)                                                              \
   }
+#define WRAP_STR(str)                                                                              \
+  (Str)                                                                                            \
+  {                                                                                                \
+    str, strlen(str)                                                                               \
+  }
 
-// event.h specific
 #define BUFFER_SIZE (size_t)8192
 #define MB (size_t)1048576
 #define READ_FLAGS (int)(EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define WRITE_FLAGS (int)(EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define ERROR_FLAGS (int)(EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 
-// proxy.h specific
 #define BACKLOG 25
 #define MAX_EVENTS 32
 #define MAX_CONNECTIONS 256
@@ -54,7 +50,6 @@
 #define PRIVATE_KEY "/etc/ssl/domain/private.key"
 #endif
 
-// client.h specific
 #define TRAILER "\r\n\r\n"
 #define LINEBREAK "\r\n"
 #define SPACE " "
@@ -66,17 +61,13 @@
 // only to assign the string literal to str.data if str.data is null
 #define ASSIGN_IF_NULL(str, literal) !str.data ? STR(literal) : str
 
-// timeout.h specific
 #define EXPIRES(timeout_p)                                                                         \
   (timeout_p->ttl > (now - timeout_p->start)                                                       \
        ? timeout_p->ttl - (now - timeout_p->start)                                                 \
        : 0) // 'now' should be already defined as time(NULL) in the same scope
 
-// str.h specific
 #define HTTP STR("http")
 #define HTTPS STR("https")
 
-extern bool RUNNING;
 extern Config config;
-extern regex_t origin_regex;
-extern SSL_CTX *ssl_context;
+extern bool RUNNING;

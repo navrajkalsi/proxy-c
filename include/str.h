@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stddef.h>
+#include <stdbool.h> //
+#include <stddef.h>  //
 
 // Thanks to u/skeeto on reddit for this and much more!
 
@@ -16,6 +16,8 @@ typedef struct cut
   Str head, tail;
   bool found;
 } Cut;
+
+void print_str(const Str *str);
 
 // not including char at upto
 Str get_head(Str str, ptrdiff_t upto);

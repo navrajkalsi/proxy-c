@@ -1,26 +1,14 @@
-#include <ctype.h>
-#include <errno.h>
-#include <getopt.h>
-#include <regex.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <getopt.h> //
+#include <stdlib.h> //
+#include <string.h> //
 
-#include "args.h"
+#include "args.h" //
 #include "main.h"
-#include "utils.h"
+#include "url.h"
+#include "utils.h" //
 
-Config parse_args(int argc, char *argv[])
+void parse_args(int argc, char *argv[])
 {
-  Config config = {.port = NULL,
-                   .canonical_host = NULL,
-                   .upstream = NULL,
-                   .accept_all = false,
-                   .log_warnings = false,
-                   .client_https = false,
-                   .upstream_https = false};
-
   int arg;
   unsigned int args_parsed = 0;
 
@@ -32,13 +20,27 @@ Config parse_args(int argc, char *argv[])
       args_parsed++;
       break;
     case 'c':
-      if (!exec_regex(&origin_regex, optarg))
+      URL url;
+      Str str = (Str){strdup(optarg), strlen(optarg)};
+
+      if (!parse_url(str, &url))
       {
-        err("exec_regex", "Invalid canonical host passed");
+        free(str.data);
+        err("parse_url", NULL);
         free_config(&config);
         exit(EXIT_FAILURE);
       }
-      config.canonical_host = strdup(optarg);
+
+      if (url.params.len || url.frags.len)
+      {
+        free(str.data);
+        err("verify_url", "Canonical Origin should not contain any query params or fragments");
+        free_config(&config);
+        exit(EXIT_FAILURE);
+      }
+
+      extract_origin(&url, &config.canonical_origin);
+
       args_parsed++;
       break;
     case 'h':
@@ -176,27 +178,6 @@ void print_args(unsigned int args_parsed, const Config *config)
 
   config->accept_all ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
                      : puts("Proxy Accepting Incoming Connections from Localhost Only.\n");
-}
-
-bool validate_port(char *port)
-{
-  if (!port)
-    return err("validate_port", "NULL port pointer passed");
-
-  char *end;
-  const long port_num = strtol(port, &end, 10);
-  if (*end != '\0')
-  {
-    errno = EINVAL; // not a valid number
-    return false;
-  }
-  if (port_num < 0 || port_num > 65535)
-  {
-    errno = ERANGE; // out of range
-    return false;
-  }
-
-  return true;
 }
 
 void free_config(Config *config)

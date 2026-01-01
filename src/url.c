@@ -1,16 +1,12 @@
-#include <assert.h>
-#include <errno.h>
-#include <netdb.h>
-#include <sched.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
+#include <assert.h> //
+#include <netdb.h>  //
+#include <stdlib.h> //
+#include <string.h> //
 
-#include "bits.h"
-#include "main.h"
-#include "str.h"
-#include "url.h"
-#include "utils.h"
+#include "bits.h"  //
+#include "main.h"  //
+#include "url.h"   //
+#include "utils.h" //
 
 // corresponding with url_delimiters enum
 const Str delimiters[DELIMITERS_LEN] = {STR("://"), STR(":"), STR("/"), STR("?"), STR("#")};
@@ -121,6 +117,15 @@ bool parse_url(Str str, URL *url)
   }
 
   return true;
+}
+
+void extract_origin(URL *url, Origin *origin)
+{
+  assert(url && origin);
+
+  origin->protocol = url->protocol;
+  origin->host = url->host;
+  origin->port = url->port;
 }
 
 bool validate_protocol(Str protocol)

@@ -1,10 +1,14 @@
-#include <assert.h>
-#include <endian.h>
-#include <stddef.h>
-#include <string.h>
+#include <assert.h> //
+#include <string.h> //
 
-#include "main.h"
-#include "str.h"
+#include "main.h" //
+#include "str.h"  //
+
+void print_str(const Str *str)
+{
+  if (str)
+    printf("%.*s\n", (int)str->len, str->data);
+}
 
 Str get_head(Str str, ptrdiff_t upto)
 {

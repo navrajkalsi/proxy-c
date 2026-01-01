@@ -1,6 +1,6 @@
 #pragma once
 
-#include "str.h"
+#include "str.h" //
 
 typedef enum url_delimiters
 {
@@ -20,7 +20,15 @@ typedef struct url
   Str protocol, host, port, path, params, frags;
 } URL;
 
+typedef struct origin
+{
+  Str protocol, host, port;
+} Origin;
+
 bool parse_url(Str str, URL *url);
+
+// fills fields of origin from url
+void extract_origin(URL *url, Origin *origin);
 
 bool validate_url(const URL *url);
 

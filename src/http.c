@@ -44,7 +44,10 @@ bool validate_host(const Str *header)
   return true;
 }
 
-bool validate_method(const Str method) { return equals(method, STR("GET")); }
+bool validate_method(const Str method)
+{
+  return equals(method, STR("GET"));
+}
 
 bool validate_http(const Str http_ver)
 {
