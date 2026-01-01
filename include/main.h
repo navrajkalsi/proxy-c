@@ -30,7 +30,10 @@
 #define ERR_STR (Str){NULL, 0}
 #define NULL_STR (Str){NULL, 0}
 #define STR(str)                                                                                   \
-  (Str) { str, (ptrdiff_t)(sizeof(str) - 1) }
+  (Str)                                                                                            \
+  {                                                                                                \
+    str, (ptrdiff_t)(sizeof(str) - 1)                                                              \
+  }
 
 // event.h specific
 #define BUFFER_SIZE (size_t)8192
@@ -68,6 +71,10 @@
   (timeout_p->ttl > (now - timeout_p->start)                                                       \
        ? timeout_p->ttl - (now - timeout_p->start)                                                 \
        : 0) // 'now' should be already defined as time(NULL) in the same scope
+
+// str.h specific
+#define HTTP STR("http")
+#define HTTPS STR("https")
 
 extern bool RUNNING;
 extern Config config;

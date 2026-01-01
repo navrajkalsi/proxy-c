@@ -31,3 +31,10 @@ Cut cut_char(Str str, char sep);
 Cut cut_str(Str str, Str sep);
 
 bool equals(Str a, Str b);
+
+char case_fold_char(char c);
+
+Str case_fold_str(Str str);
+
+// case insensitive version of equals
+bool case_equals(Str a, Str b);

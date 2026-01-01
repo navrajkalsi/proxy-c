@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <endian.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "main.h"
@@ -6,7 +8,7 @@
 
 Str get_head(Str str, ptrdiff_t upto)
 {
-  assert(str.len >= 0 && upto >= 0);
+  assert(str.len >= 0 && upto >= 0 && upto <= str.len);
 
   str.len = upto < str.len ? upto : str.len;
   return str;
@@ -35,8 +37,9 @@ ptrdiff_t contains(Str str, Str find)
 
 Cut cut_char(Str str, char sep)
 {
-  ptrdiff_t pos = 0;
+  assert(str.len);
 
+  ptrdiff_t pos = 0;
   while (pos < str.len && str.data[pos] != sep)
     pos++;
 
@@ -50,6 +53,8 @@ Cut cut_char(Str str, char sep)
 
 Cut cut_str(Str str, Str sep)
 {
+  assert(str.len && sep.len);
+
   Cut cut = {};
   ptrdiff_t pos = -1;
 
@@ -63,4 +68,32 @@ Cut cut_str(Str str, Str sep)
 bool equals(Str a, Str b)
 {
   return a.len == b.len && !memcmp(a.data, b.data, (size_t)a.len);
+}
+
+char case_fold_char(char c)
+{
+  if (c >= 'A' && c <= 'Z')
+    c = c + 'a' - 'A';
+
+  return c;
+}
+
+Str case_fold_str(Str str)
+{
+  for (ptrdiff_t i = 0; i < str.len; i++)
+    str.data[i] = case_fold_char(str.data[i]);
+
+  return str;
+}
+
+bool case_equals(Str a, Str b)
+{
+  if (a.len != b.len)
+    return false;
+
+  for (ptrdiff_t i = 0; i < a.len; i++)
+    if (case_fold_char(a.data[i]) != case_fold_char(b.data[i]))
+      return false;
+
+  return true;
 }

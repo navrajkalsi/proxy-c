@@ -6,6 +6,8 @@
 // I wanted to try bitwise operands in a project
 //
 // Indices start from right!!!
+//
+// Taken from core_dumped's video on bitwise operands
 
 void set_bit(uint8_t *word, uint8_t place);
 

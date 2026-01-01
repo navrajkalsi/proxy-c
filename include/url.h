@@ -20,11 +20,15 @@ typedef struct url
   Str protocol, host, port, path, params, frags;
 } URL;
 
-typedef struct origin
-{
-  Str protocol, host, port;
-} Origin;
-
 bool parse_url(Str str, URL *url);
 
-Origin parse_origin(Str str);
+bool validate_url(const URL *url);
+
+// if the protocol matches http or https (only web protocols)
+bool validate_protocol(Str protocol);
+
+// is host reachable
+bool validate_host(Str host);
+
+// can also be used to get the port in long, if successfull
+bool validate_port(Str port, long *port_num);

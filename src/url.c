@@ -1,4 +1,10 @@
 #include <assert.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sched.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 #include "bits.h"
 #include "main.h"
@@ -6,15 +12,16 @@
 #include "url.h"
 #include "utils.h"
 
-// corresponding to url_delimiters enum
+// corresponding with url_delimiters enum
 const Str delimiters[DELIMITERS_LEN] = {STR("://"), STR(":"), STR("/"), STR("?"), STR("#")};
 
 bool parse_url(Str str, URL *url)
 {
+  assert(url);
   url->protocol = url->host = url->port = url->path = url->params = url->frags = NULL_STR;
 
   if (!str.len)
-    return false;
+    return err("verify_len", "Empty input");
 
   uint8_t tracker = 0u, *tracker_p = &tracker;
   int last_found = -1;
@@ -35,13 +42,13 @@ bool parse_url(Str str, URL *url)
     last_found = i;
 
     switch (i)
-    {
+    { // only protocol and host are case insensitive
     case COLON_SLASHES:
-      url->protocol = cut.head;
+      url->protocol = case_fold_str(cut.head);
       break;
 
     case COLON:
-      url->host = cut.head;
+      url->host = case_fold_str(cut.head);
       break;
 
     case SLASH:
@@ -112,6 +119,49 @@ bool parse_url(Str str, URL *url)
       break;
     }
   }
+
+  return true;
+}
+
+bool validate_protocol(Str protocol)
+{ // already case folded during parsing
+  return equals(protocol, HTTPS) || equals(protocol, HTTP);
+}
+
+bool validate_host(Str host)
+{
+  char string[host.len + 1]; // null terminated hostname
+  memcpy(string, host.data, host.len);
+  string[host.len] = '\0';
+
+  struct addrinfo *res;
+  int status = getaddrinfo(string, NULL, NULL, &res);
+
+  if (res)
+    freeaddrinfo(res);
+
+  return status == 0 || err("getaddrinfo", gai_strerror(status));
+}
+
+bool validate_port(Str port, long *port_num)
+{
+  assert(port.len);
+
+  char string[port.len + 1];
+  memcpy(string, port.data, port.len);
+  string[port.len] = '\0';
+
+  char *end = NULL;
+  *port_num = strtol(string, &end, 10);
+
+  if (end == string) // comparing pointers
+    return err("strtol", "No conversion performed");
+
+  if (*end != '\0')
+    return err("strtol", "Supplied port is not a decimal number");
+
+  if (*port_num < 0 || *port_num > 65535)
+    return err("verify_port", "Port is out of range");
 
   return true;
 }
