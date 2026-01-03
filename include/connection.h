@@ -62,6 +62,8 @@ typedef struct connection
   struct connection **self_ptr; // this will be an element of active_conns array, used to
                                 // deactive/remove from active_conns(just make this NULL)
   State state;
+  int conn_tfd;  // full conn timeout, also use for keep-alive
+  int state_tfd; // timeout for individual read/write states
   uint status;   // http status code
   bool complete; // full response received and sent
   bool keep_alive;

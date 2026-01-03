@@ -7,11 +7,6 @@ typedef struct connection Connection;
 
 typedef enum
 {
-  REQUEST_READ,
-  REQUEST_WRITE,
-  RESPONSE_READ,
-  RESPONSE_WRITE,
-  CONNECTION,
   TIMEOUTTYPES // len of enum
 } TimeoutType;
 

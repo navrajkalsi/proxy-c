@@ -5,7 +5,7 @@
 #include "connection.h"
 
 // calls accept on listening socket fd and adds it to the epoll instance
-void accept_client(int proxy_fd);
+void accept_client(void);
 
 // called after EPOLLIN is detected on a client socketclient conn
 void read_request(Connection *conn);

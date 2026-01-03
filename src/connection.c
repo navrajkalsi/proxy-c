@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <sched.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@
 #include "main.h"
 #include "proxy.h"
 #include "timeout.h"
+#include "timer.h"
 #include "utils.h"
 
 Connection *active_conns[MAX_CONNECTIONS] = {0};
@@ -44,6 +46,11 @@ Connection *init_conn(void)
 
   client->headers.data = client->buffer; // initally request points to beginning of the buffer
   upstream->headers.data = upstream->buffer;
+
+  conn->conn_tfd = conn->state_tfd = -1;
+
+  if (!create_tfd(&conn->conn_tfd) || !create_tfd(&conn->state_tfd))
+    return err_null("create_tfd", NULL);
 
   reset_conn(conn);
 
@@ -133,9 +140,6 @@ void reset_conn(Connection *conn)
   conn->path = NULL_STR;
   conn->keep_alive = false;
   conn->complete = false;
-
-  // only conn_timeout is started, state timeout is not touched
-  start_conn_timeout(conn, -1);
 }
 
 // after non_block all the system calls on this fd return instantly,

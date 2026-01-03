@@ -5,9 +5,12 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "client.h"
 #include "connection.h"
 #include "main.h"
 #include "proxy.h"
+#include "timer.h"
+#include "upstream.h"
 #include "utils.h"
 
 bool setup_tls(void)
@@ -191,20 +194,13 @@ bool start_proxy(void)
 
   while (RUNNING)
   {
-    time_t now = time(NULL);
-    time_t timeout = timeouts_head ? EXPIRES(timeouts_head) : -1; // for first wait, should be -1
-
-    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, (int)timeout * 1000)) == -1)
+    if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, -1)) == -1)
     {
-      if (errno == EINTR && !RUNNING) // ctrl c for example, will not work if
-                                      // sighandler is not used first
-                                      // otherwise the program just crashes
+      if (errno == EINTR && !RUNNING) // running set to false by sig_handler
         break;
 
       return err("epoll_wait", strerror(errno));
     }
-
-    clear_expired();
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
@@ -215,7 +211,10 @@ bool start_proxy(void)
       Connection *conn = epoll_events[i].data.ptr;
 
       if (conn->state == ACCEPT_CLIENT) // new client
-        accept_client(conn->proxy_fd);
+        accept_client();
+
+      else if (tfd_expired(conn->conn_tfd) || tfd_expired(conn->state_tfd)) // timeout
+        conn->state = CLOSE_CONN;
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
         read_request(conn);
