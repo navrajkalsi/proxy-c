@@ -1,0 +1,410 @@
+#include <arpa/inet.h>
+#include <assert.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <openssl/ssl.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include "connection.h"
+#include "http.h"
+#include "main.h"
+#include "proxy.h"
+#include "upstream.h"
+#include "utils.h"
+
+// global var that stores a linked list of struct addrinfo containing info about
+// upstream server
+struct addrinfo *upstream_addrinfo = NULL;
+
+bool setup_upstream(void)
+{
+  Str host = config.upstream_host.host, port = config.upstream_host.port;
+  char host_str[host.len + 1], port_str[6];
+
+  assert(host.len);
+
+  // null terminate host
+  memcpy(host_str, host.data, host.len);
+  host_str[host.len] = '\0';
+
+  if (port.len)
+  {
+    memcpy(port_str, port.data, port.len);
+    port_str[port.len] = '\0';
+  }
+  else if (config.upstream_https)
+    memcpy(port_str, "443", 4);
+  else
+    memcpy(port_str, "80", 3);
+
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+
+  int status = 0;
+  // targetting port based on the protocol of the upstream
+  if ((status = getaddrinfo(host_str, port_str, &hints, &upstream_addrinfo)) != 0)
+    return err("getaddrinfo", gai_strerror(status));
+
+  // getaddrinfo() makes system calls that may sometime set errno, even if getaddrinfo returns 0
+  errno = 0;
+
+  return true;
+}
+
+bool connect_upstream(int *upstream_fd)
+{
+  if (!upstream_addrinfo)
+    return err("verify_upstream", "Upstream address info is NULL");
+
+  for (struct addrinfo *current = upstream_addrinfo; current; current = current->ai_next)
+  {
+    if ((*upstream_fd = socket(current->ai_family, current->ai_socktype, current->ai_protocol)) ==
+        -1)
+      continue;
+
+    if (connect(*upstream_fd, current->ai_addr, current->ai_addrlen) == -1)
+    {
+      close(*upstream_fd);
+      *upstream_fd = -2;
+      continue;
+    }
+
+    // If a valid socket is connected to then break
+    break;
+  };
+
+  if (*upstream_fd < 0)
+  { // dealing with different errors
+    if (*upstream_fd == -1)
+      return err("socket", strerror(errno));
+    else if (*upstream_fd == -2)
+      return err("connect", strerror(errno));
+  }
+
+  if (!set_non_block(*upstream_fd))
+    return err("set_non_block", NULL);
+
+  return true;
+}
+
+void free_upstream_addrinfo(void)
+{
+  if (upstream_addrinfo)
+    freeaddrinfo(upstream_addrinfo);
+}
+
+void read_response(Connection *conn)
+{
+  if (!conn)
+    goto error;
+
+  assert(conn->state == READ_RESPONSE);
+  assert(!conn->complete);
+
+  Endpoint *upstream = &conn->upstream;
+
+  // should not have next index, reset by reset_conn()
+  if (upstream->next_index)
+  {
+    err("verify_next_index", "Next index not reset. Logic error!");
+    goto error;
+  }
+
+  // after finding the headers
+  // must have written the buffer to client in full, before reading again
+  if (upstream->headers_found)
+  {
+    upstream->read_index = 0;
+    *upstream->buffer = '\0';
+  }
+
+  ssize_t read_status = 0;
+  size_t max_read = BUFFER_SIZE - (size_t)upstream->read_index - 1;
+
+  while ((max_read -= (size_t)read_status) &&
+         (read_status =
+              upstream->ssl
+                  ? SSL_read(upstream->ssl, upstream->buffer + upstream->read_index, (int)max_read)
+                  : read(upstream->fd, upstream->buffer + upstream->read_index, max_read)) > 0)
+  {
+    {
+      upstream->read_index += read_status;
+      upstream->buffer[upstream->read_index] = '\0';
+    }
+
+    if (!upstream->headers_found)
+    {
+      if (!parse_headers(conn, upstream))
+        goto error;
+
+      // no content len or encoding was specified or full response read
+      if (upstream->headers_found && !upstream->to_read)
+        goto complete;
+    }
+    else if (upstream->content_len)
+    { // bytes left from content len
+      size_t extra =
+          (size_t)read_status > upstream->to_read ? (size_t)read_status - upstream->to_read : 0;
+
+      if (extra)
+      {
+        upstream->to_read = 0;
+        upstream->next_index = upstream->read_index - (ptrdiff_t)extra;
+      }
+      else
+        upstream->to_read -= (size_t)read_status;
+
+      if (!upstream->to_read)
+        goto complete;
+    }
+    else if (upstream->chunked)
+    { // checking for last chunk, was not received during parse_headers()
+      if (find_last_chunk(upstream))
+        goto complete;
+    }
+    else
+    {
+      err("verify_upstream_read", "No read condition met. Logic error!");
+      goto error;
+    }
+  }
+
+  if (read_status == 0)
+  { // upstream disconnect
+    conn->state = CLOSE_CONN;
+    warn("read", "Upstream EOF received");
+    return;
+  }
+
+  // write whats in buffer, only if headers are found
+  // this is because parse_headers() requires all the headers to be present in one continuous memory
+  // else continue to read more
+  if (upstream->headers_found)
+    conn->state = WRITE_RESPONSE;
+
+  if (read_status == -1)
+  {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
+      NULL;
+    else
+    {
+      err("read", strerror(errno));
+      goto error;
+    }
+  }
+
+  return;
+
+complete:
+  conn->complete = true;
+  conn->state = WRITE_RESPONSE;
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = WRITE_ERROR;
+  return;
+}
+
+void handle_error_response(Connection *conn)
+{
+  if (!conn)
+    return;
+
+  assert(conn->state == WRITE_ERROR);
+  assert(conn->status && conn->status >= 300);
+
+  // every thing response related should use upstream vars
+  if (!generate_error_response(conn))
+  {
+    warn("generate_error_response", NULL);
+    char tmp_err[] = "500 Internal Server Error";
+    memcpy(conn->upstream.buffer, tmp_err, sizeof tmp_err);
+  }
+
+  if (!write_error_response(conn))
+    err("write_error_response", NULL);
+
+  // close connection header sent for errors
+  conn->state = CLOSE_CONN;
+}
+
+bool generate_error_response(Connection *conn)
+{
+  assert(conn);
+  assert(conn->status >= 300);
+
+  Endpoint *upstream = &conn->upstream;
+
+  char date[DATE_LEN] = {0};
+  if (!set_date_string(date))
+    return err("set_date_string", NULL);
+
+  const Str err_str = get_status_str(conn->status), date_str = {.data = date, .len = DATE_LEN - 1},
+            response_body[] = {STR("<html><head><title>"), err_str,
+                               STR("</title></head><body><center><h1>"), err_str,
+                               STR("</h1></center><hr><center>" SERVER "</center></body></html>")};
+
+  size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
+
+  for (uint i = 0; i < body_elms; ++i)
+    body_size += (size_t)response_body[i].len;
+
+  // calculating number of chars required to hold the final length, will mostly be 3
+  uint divisor = 1, num_of_digits = 0;
+  while (body_size / divisor > 0 && ++num_of_digits)
+    divisor *= 10;
+
+  char content_len_data[num_of_digits];
+  memset(content_len_data, 0, num_of_digits);
+
+  int_to_string((int)body_size, content_len_data);
+  if (!*content_len_data)
+    return err("int_to_string", NULL);
+
+  const Str content_length = {.data = content_len_data, .len = num_of_digits},
+            location = config.canonical_host.unparsed,
+            response_headers[] = {STR(FALLBACK_HTTP_VER),
+                                  SPACE_STR,
+                                  err_str,
+                                  STR("\r\nServer: " SERVER "\r\nDate: "),
+                                  date_str,
+                                  STR("\r\nContent-Type: text/html\r\nContent-Length: "),
+                                  content_length,
+                                  STR("\r\nConnection: "),
+                                  STR("close"), // close for errors
+                                  conn->status < 400 ? STR("\r\nLocation: ")
+                                                     : ERR_STR, // location only for redirections
+                                  conn->status < 400 ? location : ERR_STR,
+                                  STR("\r\n\r\n")};
+
+  // collecting all response in upstream_buffer
+  size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
+  for (uint i = 0; i < header_elms; ++i)
+    headers_size += (size_t)response_headers[i].len;
+
+  if (headers_size + body_size > BUFFER_SIZE)
+    return err("collect_response", "Error response too big");
+
+  ptrdiff_t buf_ptr = 0;
+
+  for (uint i = 0; i < header_elms; ++i)
+  {
+    if (!response_headers[i].len) // skip if ERR_STR
+      continue;
+
+    memcpy(upstream->buffer + buf_ptr, response_headers[i].data, (size_t)response_headers[i].len);
+    buf_ptr += response_headers[i].len;
+  }
+  for (uint i = 0; i < body_elms; ++i)
+  {
+    memcpy(upstream->buffer + buf_ptr, response_body[i].data, (size_t)response_body[i].len);
+    buf_ptr += response_body[i].len;
+  }
+  upstream->buffer[buf_ptr] = '\0';
+  upstream->to_write = (size_t)buf_ptr;
+
+  return true;
+}
+
+bool write_error_response(Connection *conn)
+{
+  assert(conn);
+
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
+
+  ssize_t write_status = 0;
+
+  while ((upstream->to_write -= (size_t)write_status) &&
+         (write_status = client->ssl
+                             ? SSL_write(client->ssl, upstream->buffer + upstream->write_index,
+                                         (int)upstream->to_write)
+                             : write(client->fd, upstream->buffer + upstream->write_index,
+                                     upstream->to_write)) > 0)
+    upstream->write_index += write_status;
+
+  if (!write_status)
+    return err("write", "No write status");
+
+  if (write_status == -1)
+  {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
+      NULL;
+    else
+      return err("write", strerror(errno));
+  }
+
+  return true;
+}
+
+void write_response(Connection *conn)
+{
+  if (!conn)
+    goto error;
+
+  assert(conn->state == WRITE_RESPONSE);
+
+  Endpoint *client = &conn->client, *upstream = &conn->upstream;
+
+  // reset to begin again
+  if (!upstream->to_write)
+    upstream->write_index = 0;
+
+  upstream->to_write =
+      (size_t)((upstream->next_index ? upstream->next_index : upstream->read_index) -
+               upstream->write_index);
+  ssize_t write_status = 0;
+
+  while ((upstream->to_write -= (size_t)write_status) &&
+         (write_status = client->ssl
+                             ? SSL_write(client->ssl, upstream->buffer + upstream->write_index,
+                                         (int)upstream->to_write)
+                             : write(client->fd, upstream->buffer + upstream->write_index,
+                                     upstream->to_write)) > 0)
+    upstream->write_index += write_status;
+
+  if (!write_status)
+  {
+    err("write", "No write status");
+    goto error;
+  }
+
+  if (write_status == -1)
+  {
+    if (errno == EINTR && !RUNNING) // shutdown
+      NULL;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
+      NULL;
+    else
+    {
+      err("write", strerror(errno));
+      goto error;
+    }
+  }
+
+  if (conn->complete)
+    conn->state = CHECK_CONN;
+  else
+    conn->state = READ_RESPONSE;
+
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = WRITE_ERROR;
+  return;
+}

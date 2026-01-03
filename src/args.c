@@ -159,18 +159,18 @@ void print_args(unsigned int args_parsed)
   if (args_parsed)
     printf("\nParsed %u Argument(s).", args_parsed);
 
-  printf("\nCanonical Host set to: %.*s\n"
-         "Upstream Host set to: %.*s\n"
-         "Listening Port set to: %.*s\n"
-         "Client side protocol set to: %s\n"
-         "Upstream side protocol set to: %s\n"
-         "Log Warnings set to: %s\n",
+  printf("\nCanonical Host set to: \e[1m%.*s\e[0m\n"
+         "Upstream Host set to: \e[1m%.*s\e[0m\n"
+         "Listening Port set to: \e[1m%.*s\e[0m\n"
+         "Client side protocol set to: \e[1m%s\e[0m\n"
+         "Upstream side protocol set to: \e[1m%s\e[0m\n"
+         "Log Warnings set to: \e[1m%s\e[0m\n",
          (int)config.canonical_host.unparsed.len, config.canonical_host.unparsed.data,
          (int)config.upstream_host.unparsed.len, config.upstream_host.unparsed.data,
          (int)config.listen_port.len, config.listen_port.data,
          config.client_https ? "HTTPS" : "HTTP", config.upstream_https ? "HTTPS" : "HTTP",
          config.log_warnings ? "true" : "false");
 
-  config.accept_all ? puts("Proxy Accepting Incoming Connections from all IPs.\n")
-                    : puts("Proxy Accepting Incoming Connections from Localhost Only.\n");
+  config.accept_all ? puts("Proxy Accepting Incoming Connections from \e[1mall IPs.\e[0m\n")
+                    : puts("Proxy Accepting Incoming Connections from \e[1mLocalhost Only.\e[0m\n");
 }

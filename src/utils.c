@@ -20,6 +20,12 @@ bool err(const char *function, const char *error)
   return false;
 }
 
+void *err_null(const char *function, const char *error)
+{
+  err(function, error);
+  return NULL;
+}
+
 void err_n_exit(const char *function, const char *error)
 {
   err(function, error);
@@ -70,14 +76,12 @@ void handle_shutdown(int sig)
   (void)sig;
   puts("\nReceived kill signal");
   RUNNING = false;
-  return;
 }
 
 void handle_sigpipe(int sig)
 {
   (void)sig;
   puts("\nReceived SIGPIPE signal");
-  return;
 }
 
 void print_active_num(void)

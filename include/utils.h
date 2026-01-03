@@ -5,6 +5,9 @@
 // Always returns false
 bool err(const char *function, const char *error);
 
+// Always returns NULL
+void *err_null(const char *function, const char *error);
+
 void err_n_exit(const char *function, const char *error);
 
 // non fatal logging

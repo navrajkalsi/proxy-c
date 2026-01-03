@@ -1,5 +1,8 @@
-#include "url.h"     //
-#include <stdbool.h> //
+#include <openssl/err.h> //
+#include <stdbool.h>     //
+
+#include "connection.h"
+#include "url.h" //
 
 // IMPORTANT:
 //
@@ -16,5 +19,24 @@ typedef struct config
   bool accept_all, log_warnings, client_https, upstream_https;
 } Config;
 
+// sets up global ssl_context
+bool setup_tls(void);
+
+// sets up proxy using global config
+bool setup_proxy(void);
+
+// sets up epoll(), sets the global var EPOLL_FD for new epoll instance and adds PROXY_FD to epoll
+bool setup_epoll(void);
+
+bool start_proxy(void);
+
+// mods state of the connection
+void handle_state(Connection *conn);
+
+void free_active_conns(void);
+
 extern Config config;
+extern SSL_CTX *ssl_context;
 extern bool RUNNING;
+extern int EPOLL_FD;
+extern int PROXY_FD;

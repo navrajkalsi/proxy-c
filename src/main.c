@@ -1,9 +1,9 @@
-#include "main.h"  //
-#include "args.h"  //
-#include "proxy.h" //
-#include "utils.h" //
+#include "main.h"
+#include "args.h"
+#include "proxy.h"
+#include "upstream.h"
+#include "utils.h"
 
-bool RUNNING = true;
 Config config = {.canonical_host = {.host = NULL_STR, .port = NULL_STR},
                  .upstream_host = {.host = NULL_STR, .port = NULL_STR},
                  .listen_port = NULL_STR,
@@ -11,58 +11,37 @@ Config config = {.canonical_host = {.host = NULL_STR, .port = NULL_STR},
                  .log_warnings = false,
                  .client_https = false,
                  .upstream_https = false};
-// int EPOLL_FD = -1;
-// SSL_CTX *ssl_context = NULL;
+SSL_CTX *ssl_context = NULL;
+bool RUNNING = true;
+int EPOLL_FD = -1;
+int PROXY_FD = -1;
 // regex_t origin_regex;
 
 int main(int argc, char *argv[])
 {
   print_banner();
 
-  // if (!setup_sig_handler())
-  // {
-  //   err("setup_sig_handler", strerror(errno));
-  //   return -1;
-  // }
-  //
-  // if (!compile_regex())
-  //   return -1;
-  //
+  if (!setup_sig_handler())
+    err_n_exit("setup_sig_handler", NULL);
+
   parse_args(argc, argv);
-  //
-  // int proxy_fd = -1;
-  //
-  // if (!setup_proxy(&config, &proxy_fd))
-  // {
-  //   err("setup_proxy", NULL);
-  //   return -1;
-  // }
-  //
-  // if (!setup_epoll(proxy_fd))
-  // {
-  //   err("setup_epoll", NULL);
-  //   return -1;
-  // }
-  //
-  // if (EPOLL_FD == -1)
-  // {
-  //   err("verify_epoll_fd", "Epoll fd is not valid");
-  //   return -1;
-  // }
-  //
-  // // loading server info, into global var in proxy.c
-  // if (!setup_upstream(config.upstream))
-  // {
-  //   err("setup_upstream", NULL);
-  //   return -1;
-  // }
-  //
-  // if (!start_proxy())
-  // {
-  //   err("start_proxy", strerror(errno));
-  //   return -1;
-  // }
-  //
+
+  if (!setup_proxy())
+    err_n_exit("setup_proxy", NULL);
+
+  if (!setup_epoll())
+    err_n_exit("setup_epoll", NULL);
+
+  if (EPOLL_FD == -1)
+    err_n_exit("verify_epoll_fd", "Epoll fd is not valid");
+
+  // loading server info, into global var in proxy.c
+  if (!setup_upstream())
+    err_n_exit("setup_upstream", NULL);
+
+  if (!start_proxy())
+    err_n_exit("start_proxy", NULL);
+
   // free_upstream_addrinfo();
   // free_active_conns();
   // free_config(&config);
