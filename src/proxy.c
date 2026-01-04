@@ -7,6 +7,7 @@
 
 #include "client.h"
 #include "connection.h"
+#include "http.h"
 #include "main.h"
 #include "proxy.h"
 #include "timer.h"
@@ -155,8 +156,7 @@ bool setup_proxy(void)
   if (listen(PROXY_FD, BACKLOG) == -1)
     return err("listen", strerror(errno));
 
-  if (!set_non_block(PROXY_FD))
-    return err("set_non_block", NULL);
+  set_non_block(PROXY_FD);
 
   printf("\nProxy Listening on port: %s\n\n", port_str);
 
@@ -167,7 +167,7 @@ bool setup_epoll(void)
 {
   assert(PROXY_FD >= 0);
 
-  if ((EPOLL_FD = epoll_create(1)) == -1)
+  if ((EPOLL_FD = epoll_create1(EPOLL_CLOEXEC)) == -1)
     return err("epoll_create", strerror(errno));
 
   // adding PROXY_FD to epoll as the listening fd
@@ -178,8 +178,7 @@ bool setup_epoll(void)
   conn->state = ACCEPT_CLIENT;
 
   // EPOLLERR & EPOLLHUP do not need to be added manually
-  if (!add_to_epoll(conn, PROXY_FD, EPOLLIN | EPOLLERR | EPOLLHUP))
-    return err("add_to_epoll", NULL);
+  add_to_epoll(conn, PROXY_FD, EPOLLIN | EPOLLERR | EPOLLHUP);
 
   return true;
 }
@@ -209,12 +208,16 @@ bool start_proxy(void)
     {
       uint32_t events = epoll_events[i].events;
       Connection *conn = epoll_events[i].data.ptr;
+      assert(conn);
 
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
-      else if (tfd_expired(conn->conn_tfd) || tfd_expired(conn->state_tfd)) // timeout
-        conn->state = CLOSE_CONN;
+      else if (tfd_expired(conn->conn_tfd))
+        conn->state = CONN_TIMEDOUT;
+
+      else if (tfd_expired(conn->state_tfd))
+        conn->state = STATE_TIMEDOUT;
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
         read_request(conn);
@@ -269,11 +272,10 @@ again:
   switch (conn->state)
   {
   case ACCEPT_CLIENT:
-    err("verify_state", "Cannot accept client in handle_state. Logic error");
-    break;
+    err_n_exit("verify_state", "Cannot accept client in handle_state. Logic error");
 
   case TLS_CLIENT:
-    if (!config.client_https || (config.client_https && setup_endpoint_tls(&conn->client)))
+    if (!config.client_https || setup_endpoint_tls(&conn->client))
     {
       add_to_epoll(conn, *client_fd, READ_FLAGS);
       conn->state = READ_REQUEST;
@@ -287,7 +289,7 @@ again:
 
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);
-    start_state_timeout(conn, REQUEST_READ);
+    arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 
   case VERIFY_REQUEST:
@@ -301,6 +303,7 @@ again:
     goto again;
 
   case WRITE_ERROR:
+    // fire and forget
     remove_timeout(&conn->conn_timeout);
     remove_timeout(&conn->state_timeout);
     mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
@@ -318,7 +321,7 @@ again:
     goto again;
 
   case TLS_UPSTREAM:
-    if (!config.upstream_https || (config.upstream_https && setup_endpoint_tls(&conn->upstream)))
+    if (!config.upstream_https || setup_endpoint_tls(&conn->upstream))
     {
       add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
       conn->state = WRITE_REQUEST;
@@ -333,29 +336,47 @@ again:
 
   case WRITE_REQUEST:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
-    start_state_timeout(conn, REQUEST_WRITE);
+    arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 
   case READ_RESPONSE:
     mod_in_epoll(conn, *upstream_fd, READ_FLAGS);
-    start_state_timeout(conn, RESPONSE_READ);
+    arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 
   case WRITE_RESPONSE:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
-    start_state_timeout(conn, RESPONSE_WRITE);
+    arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 
   case CHECK_CONN:
     check_conn(conn);
     goto again;
 
+  case CONN_TIMEDOUT:
+    break;
+
+  case STATE_TIMEDOUT:
+    break;
+
   case CLOSE_CONN:
     if (*client_fd >= 0)
+    {
       del_from_epoll(*client_fd);
+      close(*client_fd);
+    }
 
     if (*upstream_fd >= 0)
+    {
       del_from_epoll(*upstream_fd);
+      close(*upstream_fd);
+    }
+
+    del_from_epoll(conn->conn_tfd);
+    del_from_epoll(conn->state_tfd);
+
+    close(conn->conn_tfd);
+    close(conn->state_tfd);
 
     free_conn(&conn);
     break;

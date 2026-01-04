@@ -22,22 +22,21 @@
 #include "str.h"
 #include "utils.h"
 
-void accept_client(int proxy_fd)
+void accept_client(void)
 {
+  assert(PROXY_FD >= 0);
+
   // looping, as epoll might be waken up by multiple incoming requests
   while (RUNNING)
   {
     Connection *conn = NULL;
 
     if (!(conn = init_conn()))
-    {
-      err("init_conn", NULL);
-      break;
-    }
+      return (void)err("init_conn", NULL);
 
     socklen_t addr_len = sizeof conn->client_addr;
 
-    if ((conn->client.fd = accept(proxy_fd, (struct sockaddr *)&conn->client_addr, &addr_len)) ==
+    if ((conn->client.fd = accept(PROXY_FD, (struct sockaddr *)&conn->client_addr, &addr_len)) ==
         -1)
     {
       free_conn(&conn);
@@ -55,36 +54,22 @@ void accept_client(int proxy_fd)
       }
     }
 
-    if (!set_non_block(conn->client.fd))
-    {
-      free_conn(&conn);
-      err("set_non_block", NULL);
-      continue;
-    }
+    set_non_block(conn->client.fd);
 
     // new conn should start with TLS_CLIENT
     conn->state = TLS_CLIENT;
     handle_state(conn);
   }
-
-  return;
 }
 
 void read_request(Connection *conn)
 {
-  if (!conn)
-    goto error;
-
-  assert(conn->state == READ_REQUEST);
+  assert(conn && conn->state == READ_REQUEST);
 
   Endpoint *client = &conn->client;
 
   // should not have next index, reset by reset_conn()
-  if (client->next_index)
-  {
-    err("verify_next_index", "Next index not reset. Logic error!");
-    goto error;
-  }
+  assert(!client->next_index);
 
   ssize_t read_status = 0;
 
@@ -95,8 +80,7 @@ void read_request(Connection *conn)
                   ? SSL_read(client->ssl, client->buffer + client->read_index, (int)client->to_read)
                   : read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
   {
-    client->buffer[client->read_index + read_status] = '\0';
-    client->read_index += client->headers_found ? 0 : read_status;
+    client->read_index += client->headers_found ? 0 : read_status; // keep headers intact
 
     if (!client->headers_found)
     {

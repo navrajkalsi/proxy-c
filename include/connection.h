@@ -24,6 +24,8 @@ typedef enum
   READ_RESPONSE,
   WRITE_RESPONSE,
   CHECK_CONN,
+  CONN_TIMEDOUT,
+  STATE_TIMEDOUT,
   CLOSE_CONN
 } State;
 
@@ -35,7 +37,7 @@ typedef struct endpoint
   int fd;
   ptrdiff_t read_index;  // where to start reading again
   ptrdiff_t write_index; // where to start writing from
-  size_t to_read;        // more bytes to read, incase content-length is provided
+  size_t to_read;        // more bytes to read, also used for content-length
   size_t to_write;       // bytes remaining to write, across writes
   ptrdiff_t next_index;  // incase 2 or more requests/responses arrive back to back
   size_t content_len;    // for client - len of req body,upstream - len of res body
@@ -90,16 +92,16 @@ void deactivate_conn(Connection *conn);
 void reset_conn(Connection *conn);
 
 // calls fcntl to set non block option on a socket
-bool set_non_block(int fd);
+void set_non_block(int fd);
 
 // calls epoll_ctl with EPOLL_CTL_ADD
-bool add_to_epoll(Connection *conn, int fd, int flags);
+void add_to_epoll(Connection *conn, int fd, int flags);
 
 // epoll_ctl with EPOLL_CTL_MOD
-bool mod_in_epoll(Connection *conn, int fd, int flags);
+void mod_in_epoll(Connection *conn, int fd, int flags);
 
 // epoll_ctl with EPOLL_CTL_DEL
-bool del_from_epoll(int fd);
+void del_from_epoll(int fd);
 
 // copies bytes from next_index to starting of buffer till read_index & sets read index accordingly
 void pull_buf(Endpoint *endpoint);

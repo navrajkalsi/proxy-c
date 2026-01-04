@@ -10,32 +10,28 @@
 // indices corresponding to timer_types enum
 static const time_t timer_defaults[TIMER_TYPES_LEN] = {15, 10, 30, 10, 45};
 
-bool create_tfd(int *timer_fd)
+void create_tfd(int *timer_fd)
 {
   assert(timer_fd);
 
   if ((*timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC)) == -1)
-    return err("timerfd_create", strerror(errno));
-
-  return true;
+    err_n_exit("timerfd_create", strerror(errno));
 }
 
-bool arm_tfd(int timer_fd, time_t sec)
+void arm_tfd(int timer_fd, time_t sec)
 {
   struct itimerspec spec = {.it_interval = {0, 0}, .it_value = {.tv_sec = sec, .tv_nsec = 0}};
 
   if (timerfd_settime(timer_fd, 0, &spec, NULL) == -1)
-    return err("timerfd_settime", strerror(errno));
-
-  return true;
+    err_n_exit("timerfd_settime", strerror(errno));
 }
 
-bool arm_conn_tfd(int conn_tfd, time_t sec)
+void arm_conn_tfd(int conn_tfd, time_t sec)
 {
   return arm_tfd(conn_tfd, sec ? sec : timer_defaults[CONNECTION]);
 }
 
-bool arm_state_tfd(int state_tfd, State state, time_t sec)
+void arm_state_tfd(int state_tfd, State state, time_t sec)
 {
   if (sec)
     return arm_tfd(state_tfd, sec);

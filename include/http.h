@@ -4,6 +4,11 @@
 
 #include "connection.h"
 
+typedef struct headers
+{
+  Str connection, content_length, host, transfer_encoding;
+} Headers;
+
 // takes in the value of host header and also compares it to the upstream
 // bool validate_host(const Str *header);
 

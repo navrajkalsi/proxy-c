@@ -28,8 +28,8 @@ int active_conns_num = 0;
 Connection *init_conn(void)
 {
   Connection *conn;
-  if (!(conn = malloc(sizeof(Connection))))
-    return err_null("malloc", strerror(errno));
+  if (!(conn = calloc(1, sizeof(Connection))))
+    return err_null("calloc", strerror(errno));
 
   if (!activate_conn(conn))
   {
@@ -49,8 +49,12 @@ Connection *init_conn(void)
 
   conn->conn_tfd = conn->state_tfd = -1;
 
-  if (!create_tfd(&conn->conn_tfd) || !create_tfd(&conn->state_tfd))
-    return err_null("create_tfd", NULL);
+  create_tfd(&conn->conn_tfd);
+  create_tfd(&conn->state_tfd);
+
+  // no need to mod, flags never change, just arm or disarm with helper funcs
+  add_to_epoll(conn, conn->conn_tfd, TIMER_FLAGS);
+  add_to_epoll(conn, conn->state_tfd, TIMER_FLAGS);
 
   reset_conn(conn);
 
@@ -140,60 +144,51 @@ void reset_conn(Connection *conn)
   conn->path = NULL_STR;
   conn->keep_alive = false;
   conn->complete = false;
+
+  arm_conn_tfd(conn->conn_tfd, 0);
 }
 
 // after non_block all the system calls on this fd return instantly,
 // like read() or write(). so we can deal with other fds and their
 // events without waiting for this fd to finish
-bool set_non_block(int fd)
+void set_non_block(int fd)
 {
   int flags = fcntl(fd, F_GETFL, 0);
   if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-    return err("fcntl", strerror(errno));
-  return true;
+    err_n_exit("fcntl", strerror(errno));
 }
 
 // adds the entry in the interest list of epoll instance
 // essentially adds fd to epoll_fd list and the event specifies what to
 // wait for & what fd to do that for
-bool add_to_epoll(Connection *conn, int fd, int flags)
+void add_to_epoll(Connection *conn, int fd, int flags)
 {
+  assert(fd >= 0);
+
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
   struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
 
-  if (fd == -1)
-    return err("get_target_fd",
-               "Socket is probably being added to epoll before accepting/connecting");
-
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, fd, &epoll_event) == -1)
-    return err("epoll_ctl_add", strerror(errno));
-
-  return true;
+    err_n_exit("epoll_ctl_add", strerror(errno));
 }
 
-bool mod_in_epoll(Connection *conn, int fd, int flags)
+void mod_in_epoll(Connection *conn, int fd, int flags)
 {
+  assert(fd >= 0);
+
   struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
 
-  if (fd == -1)
-    return err("get_target_fd", "Socket fd is not initialized. Logic error!");
-
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, fd, &epoll_event) == -1)
-    return err("epoll_ctl_mod", strerror(errno));
-
-  return true;
+    err_n_exit("epoll_ctl_mod", strerror(errno));
 }
 
-bool del_from_epoll(int fd)
+void del_from_epoll(int fd)
 {
-  if (fd == -1)
-    return err("get_target_fd", "Socket fd is not initialized");
+  assert(fd >= 0);
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL) == -1)
-    return err("epoll_ctl_del", strerror(errno));
-
-  return true;
+    err_n_exit("epoll_ctl_del", strerror(errno));
 }
 
 void pull_buf(Endpoint *endpoint)
@@ -479,8 +474,7 @@ void print_endpoint(const Endpoint *endpoint)
 
 bool setup_endpoint_tls(Endpoint *endpoint)
 {
-  if (!endpoint)
-    return err("verify_endpoint", "NULL endpoint pointer passed.");
+  assert(endpoint);
 
   if (ssl_context)
   {
