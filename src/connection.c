@@ -35,8 +35,6 @@ Connection *init_conn(void)
     return err_null("activate_conn", "Max limit of active connections reached");
   }
 
-  memset(&conn->client_addr, 0, sizeof(struct sockaddr_storage));
-
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
   client->fd = upstream->fd = -1;
@@ -54,6 +52,17 @@ Connection *init_conn(void)
   add_to_epoll(conn, conn->state_tfd, TIMER_FLAGS);
 
   reset_conn(conn);
+
+  return conn;
+}
+
+Connection *init_proxy_conn(void)
+{ // only for PROXY_FD
+  Connection *conn;
+  if (!(conn = calloc(1, sizeof(Connection))))
+    return err_null("calloc", strerror(errno));
+
+  conn->state = ACCEPT_CLIENT;
 
   return conn;
 }

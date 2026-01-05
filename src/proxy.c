@@ -169,10 +169,8 @@ bool setup_epoll(void)
 
   // adding PROXY_FD to epoll as the listening fd
   Connection *conn = NULL;
-  if (!(conn = init_conn()))
-    return err("init_conn", NULL);
-
-  conn->state = ACCEPT_CLIENT;
+  if (!(conn = init_proxy_conn()))
+    return err("init_proxy_conn", NULL);
 
   // EPOLLERR & EPOLLHUP do not need to be added manually
   add_to_epoll(conn, PROXY_FD, EPOLLIN | EPOLLERR | EPOLLHUP);

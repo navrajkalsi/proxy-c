@@ -72,6 +72,9 @@ extern int active_conns_num; // for future use, should not be used as index for 
 // Returns a pointer to conn that needs to be added to the epoll_instance & activates it
 Connection *init_conn(void);
 
+// inits conn struct without timerfds, only for use in for proxy(listening) fd
+Connection *init_proxy_conn(void);
+
 void free_conn(Connection **conn);
 
 // adds conn to the active_conns array and starts its timeout
