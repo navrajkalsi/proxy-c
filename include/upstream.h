@@ -7,7 +7,7 @@
 // fills upstream_addrinfo by calling getaddrinfo() on the upstream
 // and selects the port matching the following, in order:
 // port from upstream_host struct
-// http or https
+// http or https from config.upstream_https
 bool setup_upstream(void);
 
 // prepares a new socket for upstream, connects to it points upstream_fd to the new socket fd

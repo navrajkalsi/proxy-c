@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdbool.h> //
+#include <stdbool.h>
 
 // Always returns false
 bool err(const char *function, const char *error);

@@ -1,12 +1,13 @@
-#include <assert.h> //
-#include <netdb.h>  //
-#include <stdlib.h> //
-#include <string.h> //
+#include <assert.h>
+#include <netdb.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "bits.h"  //
-#include "main.h"  //
-#include "url.h"   //
-#include "utils.h" //
+#include "bits.h"
+#include "main.h"
+#include "url.h"
+#include "utils.h"
 
 // corresponding with url_delimiters enum
 const Str delimiters[DELIMITERS_LEN] = {STR("://"), STR(":"), STR("/"), STR("?"), STR("#")};

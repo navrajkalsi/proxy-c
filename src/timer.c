@@ -1,14 +1,19 @@
+#include <asm-generic/errno-base.h>
+#include <asm-generic/errno.h>
 #include <assert.h>
 #include <errno.h>
+#include <sched.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/timerfd.h>
+#include <unistd.h>
 
 #include "timer.h"
 #include "utils.h"
 
 // indices corresponding to timer_types enum
-static const time_t timer_defaults[TIMER_TYPES_LEN] = {15, 10, 30, 10, 45};
+static const time_t timer_defaults[TIMER_TYPES_LEN] = {15, 10, 30, 10, 5};
 
 void create_tfd(int *timer_fd)
 {
@@ -53,6 +58,16 @@ void arm_state_tfd(int state_tfd, State state, time_t sec)
 
 bool tfd_expired(int timer_fd)
 {
+  uint64_t expirations = 0;
+  if (read(timer_fd, &expirations, sizeof(uint64_t)) == -1)
+  {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) // timer not expired
+      return false;
+    err_n_exit("tfd_exipred", strerror(errno));
+  }
+
+  return true;
+
   struct itimerspec spec;
 
   if (timerfd_gettime(timer_fd, &spec) == -1)

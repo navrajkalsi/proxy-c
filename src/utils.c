@@ -1,21 +1,22 @@
-#include <errno.h>  //
-#include <signal.h> //
-#include <stddef.h> //
-#include <stdio.h>  //
-#include <stdlib.h> //
-#include <string.h> //
+#include <errno.h>
+#include <signal.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "proxy.h" //
-#include "utils.h" //
+#include "connection.h"
+#include "proxy.h"
+#include "utils.h"
 
 bool err(const char *function, const char *error)
 {
-  if (function && error && strcmp(error, strerror(0)))
-    fprintf(stderr, "\033[1;31m%s()\033[0m: %s\n", function, error);
+  if (function && error)
+    fprintf(stderr, BOLD_RED "%s()" RESET ": %s\n", function, error);
   else if (function)
-    fprintf(stderr, "\033[1;31m%s()\033[0m\n", function);
+    fprintf(stderr, BOLD_RED "%s()\n" RESET, function);
   else
-    fputs("\033[1;31mUnknown error\033[0m", stderr);
+    fputs(BOLD_RED "Unknown error" RESET, stderr);
 
   return false;
 }
@@ -38,11 +39,11 @@ bool warn(const char *function, const char *warning)
     return false;
 
   if (function && warning)
-    fprintf(stderr, "\033[1;33m%s()\033[0m: %s\n", function, warning);
+    fprintf(stderr, BOLD_YELLOW "%s()" RESET ": %s\n", function, warning);
   else if (function)
-    fprintf(stderr, "\033[1;33m%s()\033[0m\n", function);
+    fprintf(stderr, BOLD_YELLOW "%s()\n" RESET, function);
   else
-    fputs("\033[1;33mUnknown warning\033[0m", stderr);
+    fputs(BOLD_YELLOW "Unknown warning" RESET, stderr);
 
   return false;
 }
@@ -86,8 +87,7 @@ void handle_sigpipe(int sig)
 
 void print_active_num(void)
 {
-  // printf("Num of active connections: %d\n", active_conns_num);
-  return;
+  printf("Num of active connections: %d\n", active_conns_num);
 }
 
 void print_banner(void)
@@ -118,40 +118,44 @@ void int_to_string(int num, char *out)
   *(out + pos++) = (char)((num % 10) + '0');
 }
 
-// const char *get_state_string(int state)
-// {
-//   switch (state)
-//   {
-//   case ACCEPT_CLIENT:
-//     return "accept conn";
-//   case TLS_CLIENT:
-//     return "tls_client";
-//   case READ_REQUEST:
-//     return "read_request";
-//   case VERIFY_REQUEST:
-//     return "verify_request";
-//   case WRITE_ERROR:
-//     return "write_error";
-//   case CONNECT_UPSTREAM:
-//     return "connect_upstream";
-//   case TLS_UPSTREAM:
-//     return "tls_upstream";
-//   case WRITE_REQUEST:
-//     return "write_request";
-//   case READ_RESPONSE:
-//     return "read_response";
-//   case WRITE_RESPONSE:
-//     return "write_response";
-//   case CHECK_CONN:
-//     return "check_conn";
-//   case CLOSE_CONN:
-//     return "close_conn";
-//   default:
-//     return "Unknown state";
-//   }
-// }
-//
-// void log_state(int state)
-// {
-//   puts(get_state_string(state));
-// }
+const char *get_state_string(int state)
+{
+  switch (state)
+  {
+  case ACCEPT_CLIENT:
+    return "accept conn";
+  case TLS_CLIENT:
+    return "tls_client";
+  case READ_REQUEST:
+    return "read_request";
+  case VERIFY_REQUEST:
+    return "verify_request";
+  case WRITE_ERROR:
+    return "write_error";
+  case CONNECT_UPSTREAM:
+    return "connect_upstream";
+  case TLS_UPSTREAM:
+    return "tls_upstream";
+  case WRITE_REQUEST:
+    return "write_request";
+  case READ_RESPONSE:
+    return "read_response";
+  case WRITE_RESPONSE:
+    return "write_response";
+  case CHECK_CONN:
+    return "check_conn";
+  case CONN_TIMEDOUT:
+    return "conn_timedout";
+  case STATE_TIMEDOUT:
+    return "state_timedout";
+  case CLOSE_CONN:
+    return "close_conn";
+  default:
+    return "Unknown state";
+  }
+}
+
+void log_state(int state)
+{
+  puts(get_state_string(state));
+}

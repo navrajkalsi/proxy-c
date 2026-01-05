@@ -1,15 +1,14 @@
-#include <assert.h> //
-#include <ctype.h>  //
-#include <getopt.h> //
-#include <stdio.h>  //
-#include <stdlib.h> //
-#include <string.h> //
+#include <ctype.h>
+#include <getopt.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "args.h"  //
-#include "main.h"  //
-#include "proxy.h" //
-#include "url.h"   //
-#include "utils.h" //
+#include "args.h"
+#include "main.h"
+#include "proxy.h"
+#include "url.h"
+#include "utils.h"
 
 void parse_args(int argc, char *argv[])
 {
@@ -159,18 +158,17 @@ void print_args(unsigned int args_parsed)
   if (args_parsed)
     printf("\nParsed %u Argument(s).", args_parsed);
 
-  printf("\nCanonical Host set to: \e[1m%.*s\e[0m\n"
-         "Upstream Host set to: \e[1m%.*s\e[0m\n"
-         "Listening Port set to: \e[1m%.*s\e[0m\n"
-         "Client side protocol set to: \e[1m%s\e[0m\n"
-         "Upstream side protocol set to: \e[1m%s\e[0m\n"
-         "Log Warnings set to: \e[1m%s\e[0m\n",
+  printf("\nCanonical Host set to: " BOLD "%.*s\n" RESET "Upstream Host set to: " BOLD
+         "%.*s\n" RESET "Listening Port set to: " BOLD "%.*s\n" RESET
+         "Client side protocol set to: " BOLD "%s\n" RESET "Upstream side protocol set to: " BOLD
+         "%s\n" RESET "Log Warnings set to: " BOLD "%s\n" RESET,
          (int)config.canonical_host.unparsed.len, config.canonical_host.unparsed.data,
          (int)config.upstream_host.unparsed.len, config.upstream_host.unparsed.data,
          (int)config.listen_port.len, config.listen_port.data,
          config.client_https ? "HTTPS" : "HTTP", config.upstream_https ? "HTTPS" : "HTTP",
          config.log_warnings ? "true" : "false");
 
-  config.accept_all ? puts("Proxy Accepting Incoming Connections from \e[1mall IPs.\e[0m\n")
-                    : puts("Proxy Accepting Incoming Connections from \e[1mLocalhost Only.\e[0m\n");
+  config.accept_all
+      ? puts("Proxy Accepting Incoming Connections from " BOLD "all IPs.\n" RESET)
+      : puts("Proxy Accepting Incoming Connections from " BOLD "Localhost Only.\n" RESET);
 }

@@ -1,6 +1,6 @@
-#include <stdio.h> //
+#include <stdio.h>
 
-#include "bits.h" //
+#include "bits.h"
 
 void set_bit(uint8_t *word, uint8_t place)
 {

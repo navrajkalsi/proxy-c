@@ -14,7 +14,6 @@
 #include <unistd.h>
 
 #include "connection.h"
-#include "http.h"
 #include "main.h"
 #include "proxy.h"
 #include "upstream.h"
@@ -91,8 +90,7 @@ bool connect_upstream(int *upstream_fd)
       return err("connect", strerror(errno));
   }
 
-  if (!set_non_block(*upstream_fd))
-    return err("set_non_block", NULL);
+  set_non_block(*upstream_fd);
 
   return true;
 }
@@ -246,76 +244,78 @@ bool generate_error_response(Connection *conn)
   assert(conn);
   assert(conn->status >= 300);
 
-  Endpoint *upstream = &conn->upstream;
-
-  char date[DATE_LEN] = {0};
-  if (!set_date_string(date))
-    return err("set_date_string", NULL);
-
-  const Str err_str = get_status_str(conn->status), date_str = {.data = date, .len = DATE_LEN - 1},
-            response_body[] = {STR("<html><head><title>"), err_str,
-                               STR("</title></head><body><center><h1>"), err_str,
-                               STR("</h1></center><hr><center>" SERVER "</center></body></html>")};
-
-  size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
-
-  for (uint i = 0; i < body_elms; ++i)
-    body_size += (size_t)response_body[i].len;
-
-  // calculating number of chars required to hold the final length, will mostly be 3
-  uint divisor = 1, num_of_digits = 0;
-  while (body_size / divisor > 0 && ++num_of_digits)
-    divisor *= 10;
-
-  char content_len_data[num_of_digits];
-  memset(content_len_data, 0, num_of_digits);
-
-  int_to_string((int)body_size, content_len_data);
-  if (!*content_len_data)
-    return err("int_to_string", NULL);
-
-  const Str content_length = {.data = content_len_data, .len = num_of_digits},
-            location = config.canonical_host.unparsed,
-            response_headers[] = {STR(FALLBACK_HTTP_VER),
-                                  SPACE_STR,
-                                  err_str,
-                                  STR("\r\nServer: " SERVER "\r\nDate: "),
-                                  date_str,
-                                  STR("\r\nContent-Type: text/html\r\nContent-Length: "),
-                                  content_length,
-                                  STR("\r\nConnection: "),
-                                  STR("close"), // close for errors
-                                  conn->status < 400 ? STR("\r\nLocation: ")
-                                                     : ERR_STR, // location only for redirections
-                                  conn->status < 400 ? location : ERR_STR,
-                                  STR("\r\n\r\n")};
-
-  // collecting all response in upstream_buffer
-  size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
-  for (uint i = 0; i < header_elms; ++i)
-    headers_size += (size_t)response_headers[i].len;
-
-  if (headers_size + body_size > BUFFER_SIZE)
-    return err("collect_response", "Error response too big");
-
-  ptrdiff_t buf_ptr = 0;
-
-  for (uint i = 0; i < header_elms; ++i)
-  {
-    if (!response_headers[i].len) // skip if ERR_STR
-      continue;
-
-    memcpy(upstream->buffer + buf_ptr, response_headers[i].data, (size_t)response_headers[i].len);
-    buf_ptr += response_headers[i].len;
-  }
-  for (uint i = 0; i < body_elms; ++i)
-  {
-    memcpy(upstream->buffer + buf_ptr, response_body[i].data, (size_t)response_body[i].len);
-    buf_ptr += response_body[i].len;
-  }
-  upstream->buffer[buf_ptr] = '\0';
-  upstream->to_write = (size_t)buf_ptr;
-
+  // Endpoint *upstream = &conn->upstream;
+  //
+  // char date[DATE_LEN] = {0};
+  // if (!set_date_string(date))
+  //   return err("set_date_string", NULL);
+  //
+  // const Str err_str = get_status_str(conn->status), date_str = {.data = date, .len = DATE_LEN -
+  // 1},
+  //           response_body[] = {STR("<html><head><title>"), err_str,
+  //                              STR("</title></head><body><center><h1>"), err_str,
+  //                              STR("</h1></center><hr><center>" SERVER
+  //                              "</center></body></html>")};
+  //
+  // size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
+  //
+  // for (uint i = 0; i < body_elms; ++i)
+  //   body_size += (size_t)response_body[i].len;
+  //
+  // // calculating number of chars required to hold the final length, will mostly be 3
+  // uint divisor = 1, num_of_digits = 0;
+  // while (body_size / divisor > 0 && ++num_of_digits)
+  //   divisor *= 10;
+  //
+  // char content_len_data[num_of_digits];
+  // memset(content_len_data, 0, num_of_digits);
+  //
+  // int_to_string((int)body_size, content_len_data);
+  // if (!*content_len_data)
+  //   return err("int_to_string", NULL);
+  //
+  // const Str content_length = {.data = content_len_data, .len = num_of_digits},
+  //           location = config.canonical_host.unparsed,
+  //           response_headers[] = {STR(FALLBACK_HTTP_VER),
+  //                                 SPACE_STR,
+  //                                 err_str,
+  //                                 STR("\r\nServer: " SERVER "\r\nDate: "),
+  //                                 date_str,
+  //                                 STR("\r\nContent-Type: text/html\r\nContent-Length: "),
+  //                                 content_length,
+  //                                 STR("\r\nConnection: "),
+  //                                 STR("close"), // close for errors
+  //                                 conn->status < 400 ? STR("\r\nLocation: ")
+  //                                                    : ERR_STR, // location only for redirections
+  //                                 conn->status < 400 ? location : ERR_STR,
+  //                                 STR("\r\n\r\n")};
+  //
+  // // collecting all response in upstream_buffer
+  // size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
+  // for (uint i = 0; i < header_elms; ++i)
+  //   headers_size += (size_t)response_headers[i].len;
+  //
+  // if (headers_size + body_size > BUFFER_SIZE)
+  //   return err("collect_response", "Error response too big");
+  //
+  // ptrdiff_t buf_ptr = 0;
+  //
+  // for (uint i = 0; i < header_elms; ++i)
+  // {
+  //   if (!response_headers[i].len) // skip if ERR_STR
+  //     continue;
+  //
+  //   memcpy(upstream->buffer + buf_ptr, response_headers[i].data,
+  //   (size_t)response_headers[i].len); buf_ptr += response_headers[i].len;
+  // }
+  // for (uint i = 0; i < body_elms; ++i)
+  // {
+  //   memcpy(upstream->buffer + buf_ptr, response_body[i].data, (size_t)response_body[i].len);
+  //   buf_ptr += response_body[i].len;
+  // }
+  // upstream->buffer[buf_ptr] = '\0';
+  // upstream->to_write = (size_t)buf_ptr;
+  //
   return true;
 }
 

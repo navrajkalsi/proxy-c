@@ -1,17 +1,14 @@
 #include <assert.h>
 #include <netdb.h>
 #include <openssl/ssl.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 
 #include "client.h"
-#include "connection.h"
-#include "http.h"
-#include "main.h"
 #include "proxy.h"
 #include "timer.h"
-#include "upstream.h"
 #include "utils.h"
 
 bool setup_tls(void)
@@ -185,14 +182,13 @@ bool setup_epoll(void)
 
 bool start_proxy(void)
 {
-  timeouts_head = timeouts_tail = NULL;
-
   int ready_events = -1;
   struct epoll_event epoll_events[MAX_EVENTS]; // this will be filled with the fds that are ready
                                                // with their respective operation type
 
   while (RUNNING)
   {
+    print_active_num();
     if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, -1)) == -1)
     {
       if (errno == EINTR && !RUNNING) // running set to false by sig_handler
@@ -200,6 +196,8 @@ bool start_proxy(void)
 
       return err("epoll_wait", strerror(errno));
     }
+
+    printf("num of events: %d\n", ready_events);
 
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
@@ -213,26 +211,30 @@ bool start_proxy(void)
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
-      else if (tfd_expired(conn->conn_tfd))
+      else if (events & EPOLLIN && tfd_expired(conn->conn_tfd))
         conn->state = CONN_TIMEDOUT;
 
-      else if (tfd_expired(conn->state_tfd))
+      else if (events & EPOLLIN && tfd_expired(conn->state_tfd))
         conn->state = STATE_TIMEDOUT;
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
         read_request(conn);
 
       else if (conn->state == WRITE_ERROR && events & EPOLLOUT) // write error without upstream
-        handle_error_response(conn);
+        puts("handle_error_response");
+      // handle_error_response(conn);
 
       else if (conn->state == WRITE_REQUEST && events & EPOLLOUT) // send to upstream
-        write_request(conn);
+        puts("write_request");
+      // write_request(conn);
 
       else if (conn->state == READ_RESPONSE && events & EPOLLIN) // read from upstream
-        read_response(conn);
+        puts("read_response");
+      // read_response(conn);
 
       else if (conn->state == WRITE_RESPONSE && events & EPOLLOUT) // send to client
-        write_response(conn);
+        puts("write_response");
+      // write_response(conn);
 
       else if (events & EPOLLHUP)
       {
@@ -268,11 +270,13 @@ void handle_state(Connection *conn)
   int *client_fd = &conn->client.fd, *upstream_fd = &conn->upstream.fd;
 
 again:
+  log_state(conn->state);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
   {
   case ACCEPT_CLIENT:
     err_n_exit("verify_state", "Cannot accept client in handle_state. Logic error");
+    break;
 
   case TLS_CLIENT:
     if (!config.client_https || setup_endpoint_tls(&conn->client))
@@ -282,6 +286,8 @@ again:
     }
     else
     { // for client error cannot send any response, just close
+      close(*client_fd);
+      *client_fd = -1;
       err("setup_endpoint_tls", NULL);
       conn->state = CLOSE_CONN;
     }
@@ -293,31 +299,31 @@ again:
     break;
 
   case VERIFY_REQUEST:
-    if (*upstream_fd >= 0) // if reusing a upstream from previous res
-      conn->state = WRITE_REQUEST;
-    else if (verify_request(conn))
-      conn->state = CONNECT_UPSTREAM;
-    else
-      conn->state = WRITE_ERROR;
-    print_request(conn);
+    // if (*upstream_fd >= 0) // if reusing a upstream from previous res
+    //   conn->state = WRITE_REQUEST;
+    // else if (verify_request(conn))
+    //   conn->state = CONNECT_UPSTREAM;
+    // else
+    //   conn->state = WRITE_ERROR;
+    // print_request(conn);
     goto again;
 
   case WRITE_ERROR:
     // fire and forget
-    remove_timeout(&conn->conn_timeout);
-    remove_timeout(&conn->state_timeout);
-    mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
+    // remove_timeout(&conn->conn_timeout);
+    // remove_timeout(&conn->state_timeout);
+    // mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
     // do not add timeout here to prevent creating a loop
     break;
 
   case CONNECT_UPSTREAM:
-    if (connect_upstream(upstream_fd))
-      conn->state = TLS_UPSTREAM;
-    else
-    {
-      conn->status = 500;
-      conn->state = WRITE_ERROR;
-    }
+    // if (connect_upstream(upstream_fd))
+    //   conn->state = TLS_UPSTREAM;
+    // else
+    // {
+    //   conn->status = 500;
+    //   conn->state = WRITE_ERROR;
+    // }
     goto again;
 
   case TLS_UPSTREAM:
@@ -371,12 +377,6 @@ again:
       del_from_epoll(*upstream_fd);
       close(*upstream_fd);
     }
-
-    del_from_epoll(conn->conn_tfd);
-    del_from_epoll(conn->state_tfd);
-
-    close(conn->conn_tfd);
-    close(conn->state_tfd);
 
     free_conn(&conn);
     break;

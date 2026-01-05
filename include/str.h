@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stdbool.h> //
-#include <stddef.h>  //
+#include <stdbool.h>
+#include <stddef.h>
 
 // Thanks to u/skeeto on reddit for this and much more!
 

@@ -1,15 +1,10 @@
 #pragma once
 
-#include <openssl/crypto.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <openssl/err.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 
 #include "main.h"
 #include "str.h"
-#include "timeout.h"
 
 typedef enum
 {
@@ -35,17 +30,17 @@ typedef struct endpoint
   SSL *ssl;
   Str headers; // buffer may contain more bytes than this
   int fd;
-  ptrdiff_t read_index;  // where to start reading again
-  ptrdiff_t write_index; // where to start writing from
-  size_t to_read;        // more bytes to read, also used for content-length
-  size_t to_write;       // bytes remaining to write, across writes
-  ptrdiff_t next_index;  // incase 2 or more requests/responses arrive back to back
-  size_t content_len;    // for client - len of req body,upstream - len of res body
-  bool chunked;          // transfer encoding
-  bool headers_found;    // if nothing more is needed to be read from the current request,
-                         // stop reading if new request is detected, in case of client
-  char last_chunk_found[sizeof LAST_CHUNK]; // how much of the last chunk was read
-  uint8_t last_chunk_tracker;               // tracks bits for every last chunk char
+  ptrdiff_t read_index;       // where to start reading again
+  ptrdiff_t write_index;      // where to start writing from
+  size_t to_read;             // more bytes to read, also used for content-length
+  size_t to_write;            // bytes remaining to write, across writes
+  ptrdiff_t next_index;       // incase 2 or more requests/responses arrive back to back
+  size_t content_len;         // for client - len of req body,upstream - len of res body
+  bool chunked;               // transfer encoding
+  bool headers_found;         // if nothing more is needed to be read from the current request,
+                              // stop reading if new request is detected, in case of client
+  char last_chunk_found[5];   // how much of the last chunk was read
+  uint8_t last_chunk_tracker; // tracks bits for every last chunk char
 } Endpoint;
 
 // struct to be used for adding/modding/deleting to the epoll instance
@@ -56,8 +51,6 @@ typedef struct connection
   struct sockaddr_storage client_addr; // filled by accept()
   Endpoint client;
   Endpoint upstream;
-  Timeout conn_timeout;  // full conn timeout, also use for keep-alive
-  Timeout state_timeout; // timeout for individual read/write states
   Str http_ver;
   Str path;
   Str host;

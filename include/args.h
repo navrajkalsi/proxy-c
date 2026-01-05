@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdbool.h> //
+#include <stdbool.h>
 
 // fills global config var
 void parse_args(int argc, char *argv[]);

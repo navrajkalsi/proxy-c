@@ -17,7 +17,6 @@
 
 #include "client.h"
 #include "connection.h"
-#include "http.h"
 #include "proxy.h"
 #include "str.h"
 #include "utils.h"
@@ -66,6 +65,8 @@ void read_request(Connection *conn)
 {
   assert(conn && conn->state == READ_REQUEST);
 
+  puts("returning");
+  return;
   Endpoint *client = &conn->client;
 
   // should not have next index, reset by reset_conn()
@@ -166,7 +167,8 @@ bool verify_request(Connection *conn)
     conn->status = 400;
     return err("validate_method", "Invalid request");
   }
-  else if (!validate_method(c.head))
+  // else if (!validate_method(c.head))
+  else if (true)
   {
     conn->status = 405;
     return err("validate_method", "Invalid method");
@@ -190,7 +192,8 @@ bool verify_request(Connection *conn)
     conn->status = 400;
     return err("validate_http", "Invalid request");
   }
-  else if (!validate_http(c.head))
+  // else if (!validate_http(c.head))
+  else if (true)
   {
     conn->status = 500;
     return err("validate_http", "Invalid HTTP version");
@@ -198,7 +201,8 @@ bool verify_request(Connection *conn)
   conn->http_ver = c.head;
 
   // finding the host header
-  if (!get_header_value(c.tail.data, "Host", &conn->host))
+  // if (!get_header_value(c.tail.data, "Host", &conn->host))
+  if (true)
   {
     conn->status = 400;
     return err("get_header_value", "Host header not found");
@@ -211,7 +215,7 @@ bool verify_request(Connection *conn)
   // }
 
   // respecting client connection, in case of no error
-  set_connection(conn->client.buffer, conn);
+  // set_connection(conn->client.buffer, conn);
   conn->status = 200;
 
   return true;

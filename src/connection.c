@@ -15,10 +15,8 @@
 #include <unistd.h>
 
 #include "connection.h"
-#include "http.h"
 #include "main.h"
 #include "proxy.h"
-#include "timeout.h"
 #include "timer.h"
 #include "utils.h"
 
@@ -48,7 +46,6 @@ Connection *init_conn(void)
   upstream->headers.data = upstream->buffer;
 
   conn->conn_tfd = conn->state_tfd = -1;
-
   create_tfd(&conn->conn_tfd);
   create_tfd(&conn->state_tfd);
 
@@ -63,14 +60,16 @@ Connection *init_conn(void)
 
 void free_conn(Connection **conn)
 {
-  if (!conn || !*conn)
-    return;
+  assert(conn && *conn);
 
   Connection *to_free = *conn;
   deactivate_conn(*conn);
 
-  remove_timeout(&to_free->conn_timeout);
-  remove_timeout(&to_free->state_timeout);
+  del_from_epoll(to_free->conn_tfd);
+  del_from_epoll(to_free->state_tfd);
+
+  close(to_free->conn_tfd);
+  close(to_free->state_tfd);
 
   if (to_free->client.ssl)
   {
@@ -139,7 +138,7 @@ void reset_conn(Connection *conn)
   client->last_chunk_tracker = upstream->last_chunk_tracker = 0u;
 
   conn->status = 0;
-  conn->http_ver = STR(FALLBACK_HTTP_VER);
+  conn->http_ver = NULL_STR;
   conn->host = NULL_STR;
   conn->path = NULL_STR;
   conn->keep_alive = false;
@@ -223,22 +222,22 @@ bool find_last_chunk(Endpoint *endpoint)
   // first checking if already reading last chunk from previous call
   size_t matched = strlen(endpoint->last_chunk_found);
 
-  while (matched && matched < (size_t)LAST_CHUNK_STR.len && *start)
+  while (matched && matched < (size_t)LAST_CHUNK.len && *start)
   { // continue to check for last_chunk
-    if (*start != LAST_CHUNK[matched])
+    if (*start != LAST_CHUNK.data[matched])
     { // mismatch
       *endpoint->last_chunk_found = '\0';
       matched = 0;
       break;
     }
 
-    endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
+    endpoint->last_chunk_found[matched] = LAST_CHUNK.data[matched];
     endpoint->last_chunk_found[++matched] = '\0';
 
     start++;
   }
 
-  if (matched == (size_t)LAST_CHUNK_STR.len)
+  if (matched == (size_t)LAST_CHUNK.len)
   {             // full chunk matched
     if (*start) // next request
       endpoint->next_index = start - endpoint->buffer;
@@ -253,11 +252,10 @@ bool find_last_chunk(Endpoint *endpoint)
 
   // last chunk not found in the beginning
   // now searching beyond
-  char *last_chunk = LAST_CHUNK;
+  char *last_chunk = LAST_CHUNK.data;
   if ((last_chunk = strstr(start, last_chunk)))
-  { // last chunk was read
-    ptrdiff_t chunk_end =
-        (last_chunk + LAST_CHUNK_STR.len) - endpoint->buffer; // this is past the \n
+  {                                                                         // last chunk was read
+    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK.len) - endpoint->buffer; // this is past the \n
 
     if (endpoint->buffer[chunk_end]) // read the body and another request
       endpoint->next_index = chunk_end;
@@ -270,22 +268,21 @@ bool find_last_chunk(Endpoint *endpoint)
   // '0\r\n\r'
   start = endpoint->buffer + endpoint->headers.len;
   size_t read_size = strlen(start), // num of chars available to check at most
-      to_match =
-          read_size < (size_t)LAST_CHUNK_STR.len - 1 ? read_size : (size_t)LAST_CHUNK_STR.len - 1;
+      to_match = read_size < (size_t)LAST_CHUNK.len - 1 ? read_size : (size_t)LAST_CHUNK.len - 1;
   ptrdiff_t match_index = (ptrdiff_t)(read_size - to_match);
   matched = 0;
 
   // checking if 0 is received, only using last to_match bytes
   while (start[match_index])
   {
-    if (start[match_index] != LAST_CHUNK[matched])
+    if (start[match_index] != LAST_CHUNK.data[matched])
     {
       matched = 0;
       *endpoint->last_chunk_found = '\0'; // restart
     }
     else
     {
-      endpoint->last_chunk_found[matched] = LAST_CHUNK[matched];
+      endpoint->last_chunk_found[matched] = LAST_CHUNK.data[matched];
       endpoint->last_chunk_found[++matched] = '\0';
     }
 
@@ -312,7 +309,7 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
     return err("verify_endpoint", "Unknown endpoint");
 
   char *headers_end = NULL;
-  if (!(headers_end = strstr(endpoint->buffer, TRAILER)))
+  if (!(headers_end = strstr(endpoint->buffer, TRAILER.data)))
   {
     if ((size_t)endpoint->read_index >= BUFFER_SIZE - 1)
     { // no space left
@@ -324,7 +321,7 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
   else
     endpoint->headers_found = true;
 
-  headers_end += TRAILER_STR.len; // now past the last \n
+  headers_end += TRAILER.len; // now past the last \n
 
   endpoint->headers.data = endpoint->buffer;
   endpoint->headers.len = headers_end - endpoint->buffer;
@@ -334,9 +331,10 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
   char org_char = *headers_end;
   *headers_end = '\0';
 
-  Str misc = ERR_STR; // misc str to contain the header value
+  Str misc = NULL_STR; // misc str to contain the header value
 
-  if (get_header_value(endpoint->buffer, "Connection", &misc))
+  // if (get_header_value(endpoint->buffer, "Connection", &misc))
+  if (true)
   {
     Str *conn_header = &misc;
 
@@ -357,8 +355,9 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
     }
   }
 
-  misc = ERR_STR;
-  if (get_header_value(endpoint->buffer, "Content-Length", &misc))
+  misc = NULL_STR;
+  // if (get_header_value(endpoint->buffer, "Content-Length", &misc))
+  if (true)
   {
     *headers_end = org_char;
     Str *content_len_str = &misc;
@@ -402,7 +401,8 @@ bool parse_headers(Connection *conn, Endpoint *endpoint)
 
     return true; // store body for upstream
   }
-  else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc))
+  // else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc))
+  else if (true)
   {
     *headers_end = org_char;
     Str *transfer_encoding = &misc;

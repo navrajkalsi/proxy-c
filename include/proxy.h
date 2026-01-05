@@ -1,8 +1,8 @@
-#include <openssl/err.h> //
-#include <stdbool.h>     //
+#include <openssl/err.h>
 
-#include "connection.h"
-#include "url.h" //
+#include "url.h"
+
+typedef struct connection Connection;
 
 // IMPORTANT:
 //
