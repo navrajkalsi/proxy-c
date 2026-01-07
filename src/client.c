@@ -88,6 +88,8 @@ void read_request(Connection *conn)
     else
       assert(false);
 
+    assert(false);
+
     if (!client->headers_found)
     {
       if (!parse_headers(conn, client))

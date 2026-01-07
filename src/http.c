@@ -2,6 +2,7 @@
 #include <sched.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include "connection.h"
 #include "http.h"
@@ -17,7 +18,8 @@ bool find_empty_line(Str *head)
   if (!tmp.len)
     return false;
 
-  for (Cut line = cut_char(tmp, '\n'); head->len += line.head.len + 1; line = cut_char(tmp, '\n'))
+  for (Cut line = cut_char(tmp, '\n'); head->len += line.found ? line.head.len + 1 : 0;
+       line = cut_char(tmp, '\n'))
     if (!line.found) // read more
       return false;
     else if (!line.head.len || (line.head.len == 1 && *line.head.data == '\r')) // empty line found
@@ -39,13 +41,10 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
   bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
   assert(client || upstream);
 
-  Str new = endpoint->head;
-  new.len++;
-  put_str(&new);
-
   if (client && !parse_request_line(conn, endpoint))
     return err("parse_request_line", NULL);
-  else if (!parse_status_line(conn, endpoint))
+
+  if (upstream && !parse_status_line(conn, endpoint))
     return err("parse_status_line", NULL);
 
   assert(false);
