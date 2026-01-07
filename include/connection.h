@@ -28,6 +28,7 @@ typedef struct endpoint
 {
   char buffer[BUFFER_SIZE];
   SSL *ssl;
+  Str head;    // start of request to empty line
   Str headers; // buffer may contain more bytes than this
   int fd;
   ptrdiff_t read_index;       // where to start reading again
@@ -51,8 +52,8 @@ typedef struct connection
   struct sockaddr_storage client_addr; // filled by accept()
   Endpoint client;
   Endpoint upstream;
-  Str http_ver;
   Str path;
+  Str protocol;
   Str host;
   struct connection **self_ptr; // this will be an element of active_conns array, used to
                                 // deactive/remove from active_conns(just make this NULL)

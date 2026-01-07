@@ -102,3 +102,11 @@ bool case_equals(Str a, Str b)
 
   return true;
 }
+
+void trim_cr(Str *str)
+{
+  assert(str);
+
+  if (str->len > 0 && str->data[str->len - 1] == '\r')
+    str->len--;
+};

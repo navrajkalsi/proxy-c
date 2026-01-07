@@ -17,6 +17,7 @@
 
 #include "client.h"
 #include "connection.h"
+#include "http.h"
 #include "proxy.h"
 #include "str.h"
 #include "utils.h"
@@ -65,8 +66,6 @@ void read_request(Connection *conn)
 {
   assert(conn && conn->state == READ_REQUEST);
 
-  puts("returning");
-  return;
   Endpoint *client = &conn->client;
 
   // should not have next index, reset by reset_conn()
@@ -82,6 +81,12 @@ void read_request(Connection *conn)
                   : read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
   {
     client->read_index += client->headers_found ? 0 : read_status; // keep headers intact
+
+    client->head.len = client->read_index;
+    if (find_empty_line(client->head))
+      parse_head(conn, client);
+    else
+      assert(false);
 
     if (!client->headers_found)
     {
@@ -198,7 +203,7 @@ bool verify_request(Connection *conn)
     conn->status = 500;
     return err("validate_http", "Invalid HTTP version");
   }
-  conn->http_ver = c.head;
+  conn->protocol = c.head;
 
   // finding the host header
   // if (!get_header_value(c.tail.data, "Host", &conn->host))

@@ -40,3 +40,6 @@ Str case_fold_str(Str str);
 
 // case insensitive version of equals
 bool case_equals(Str a, Str b);
+
+// removes \r from end
+void trim_cr(Str *str);

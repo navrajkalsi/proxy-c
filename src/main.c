@@ -15,7 +15,6 @@ SSL_CTX *ssl_context = NULL;
 bool RUNNING = true;
 int EPOLL_FD = -1;
 int PROXY_FD = -1;
-// regex_t origin_regex;
 
 int main(int argc, char *argv[])
 {

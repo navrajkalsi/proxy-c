@@ -41,7 +41,9 @@ Connection *init_conn(void)
   client->next_index = upstream->next_index = 0;
 
   client->headers.data = client->buffer; // initally request points to beginning of the buffer
+  client->head.data = client->buffer;
   upstream->headers.data = upstream->buffer;
+  upstream->head.data = upstream->buffer;
 
   conn->conn_tfd = conn->state_tfd = -1;
   create_tfd(&conn->conn_tfd);
@@ -136,6 +138,7 @@ void reset_conn(Connection *conn)
   pull_buf(upstream);
 
   client->headers.len = upstream->headers.len = 0;
+  client->head.len = upstream->head.len = 0;
   client->read_index = upstream->read_index = 0;
   client->write_index = upstream->write_index = 0;
   client->to_read = upstream->to_read = BUFFER_SIZE;
@@ -147,7 +150,7 @@ void reset_conn(Connection *conn)
   client->last_chunk_tracker = upstream->last_chunk_tracker = 0u;
 
   conn->status = 0;
-  conn->http_ver = NULL_STR;
+  conn->protocol = NULL_STR;
   conn->host = NULL_STR;
   conn->path = NULL_STR;
   conn->keep_alive = false;
