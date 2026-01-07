@@ -1,23 +1,29 @@
 #include <assert.h>
+#include <sched.h>
 #include <stdbool.h>
-#include <stdio.h>
+#include <stddef.h>
 
+#include "connection.h"
 #include "http.h"
 #include "str.h"
 #include "utils.h"
 
-bool find_empty_line(Str message)
+bool find_empty_line(Str *head)
 {
-  if (!message.len)
+  assert(head);
+  Str tmp = *head;
+  head->len = 0;
+
+  if (!tmp.len)
     return false;
 
-  for (Cut line = cut_char(message, '\n');; line = cut_char(message, '\n'))
+  for (Cut line = cut_char(tmp, '\n'); head->len += line.head.len + 1; line = cut_char(tmp, '\n'))
     if (!line.found) // read more
       return false;
     else if (!line.head.len || (line.head.len == 1 && *line.head.data == '\r')) // empty line found
       return true;
     else
-      message = line.tail;
+      tmp = line.tail;
 
   return false;
 }
@@ -33,10 +39,14 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
   bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
   assert(client || upstream);
 
-  if (client)
-    parse_request_line(conn, endpoint);
-  else
-    parse_status_line(conn, endpoint);
+  Str new = endpoint->head;
+  new.len++;
+  put_str(&new);
+
+  if (client && !parse_request_line(conn, endpoint))
+    return err("parse_request_line", NULL);
+  else if (!parse_status_line(conn, endpoint))
+    return err("parse_status_line", NULL);
 
   assert(false);
 
@@ -99,6 +109,8 @@ bool parse_status_line(Connection *conn, Endpoint *upstream)
 {
   assert(conn && upstream);
 
+  conn->status = 500; // in case of error with upstream, 500 can be set before hand
+
   Cut cut = cut_char(upstream->head, '\n');
   assert(cut.found); // only to be used after empty line found
   trim_cr(&cut.head);
@@ -106,42 +118,24 @@ bool parse_status_line(Connection *conn, Endpoint *upstream)
   // protocol
   cut = cut_char(cut.head, ' ');
   if (!cut.found)
-  {
-    conn->status = 500;
     return err("cut_char", "Malformed Status Line");
-  }
-  else if (!equals(cut.head, STR("HTTP/1.0")) && !equals(cut.head, STR("HTTP/1.1")))
-  {
-    conn->status = 500;
-    return err("check_request_method", "Invalid response protocol");
-  }
+  else if (!equals(cut.head, conn->protocol)) // compare against request protocol
+    return err("check_response_protocol", "Invalid response protocol");
 
   // status code
   cut = cut_char(cut.tail, ' ');
-  if (!cut.found)
-  {
-    conn->status = 500;
-    return err("cut_char", "Malformed Request Line");
-  }
+  if (!cut.found && cut.head.len != 3) // response phrase is optional and only status code is valid
+    return err("cut_char", "Malformed Status Line");
   else if (!cut.head.len)
-  {
-    conn->status = 400;
-    return err("check_request_target", "Request target empty");
-  }
-  else if (*cut.head.data != '/') // only supporting origin form of request targets
-  {
-    conn->status = 500;
-    return err("check_request_target", "Request target method not supported");
-  }
-  conn->path = cut.head;
+    return err("check_response_status", "Response Status Code not found");
 
-  // request protocol
-  if (!equals(cut.tail, STR("HTTP/1.0")) && !equals(cut.tail, STR("HTTP/1.1")))
-  {
-    conn->status = 505;
-    return err("check_request_protocol", "Invalid protocol");
-  }
-  conn->protocol = cut.tail;
+  conn->status = 200;
+  return true;
+}
+
+bool parse_headers(Connection *conn, Endpoint *endpoint)
+{
+  assert(conn && endpoint);
 
   return true;
 }

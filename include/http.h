@@ -1,4 +1,7 @@
-#include "connection.h"
+#include "str.h"
+
+typedef struct connection Connection;
+typedef struct endpoint Endpoint;
 
 typedef struct headers
 {
@@ -6,7 +9,8 @@ typedef struct headers
 } Headers;
 
 // returns true if an empty line is found
-bool find_empty_line(Str message);
+// and sets the len of message to end of head
+bool find_empty_line(Str *head);
 
 // head includes: first line(request or status line, depending on the endpoint) and the headers
 // return true only if headers found and ok,
@@ -17,3 +21,5 @@ bool parse_head(Connection *conn, Endpoint *endpoint);
 bool parse_request_line(Connection *conn, Endpoint *client);
 
 bool parse_status_line(Connection *conn, Endpoint *upstream);
+
+bool parse_headers(Connection *conn, Endpoint *endpoint);

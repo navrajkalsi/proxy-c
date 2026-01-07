@@ -3,6 +3,7 @@
 #include <openssl/err.h>
 #include <sys/socket.h>
 
+#include "http.h"
 #include "main.h"
 #include "str.h"
 
@@ -27,9 +28,9 @@ typedef enum
 typedef struct endpoint
 {
   char buffer[BUFFER_SIZE];
+  Headers headers;
+  Str head; // start of request to empty line
   SSL *ssl;
-  Str head;    // start of request to empty line
-  Str headers; // buffer may contain more bytes than this
   int fd;
   ptrdiff_t read_index;       // where to start reading again
   ptrdiff_t write_index;      // where to start writing from

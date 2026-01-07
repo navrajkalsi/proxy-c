@@ -83,7 +83,7 @@ void read_request(Connection *conn)
     client->read_index += client->headers_found ? 0 : read_status; // keep headers intact
 
     client->head.len = client->read_index;
-    if (find_empty_line(client->head))
+    if (find_empty_line(&client->head))
       parse_head(conn, client);
     else
       assert(false);
@@ -164,7 +164,7 @@ bool verify_request(Connection *conn)
   assert(conn->state == VERIFY_REQUEST);
 
   Endpoint *client = &conn->client;
-  Cut c = cut_char(client->headers, ' ');
+  Cut c = cut_char(client->head, ' ');
 
   // verifying method
   if (!c.found)
@@ -236,7 +236,7 @@ void write_request(Connection *conn)
   Endpoint *client = &conn->client, *upstream = &conn->upstream;
 
   // writing request headers from client buffer to upstream
-  client->to_write = (size_t)(client->headers.len - client->write_index);
+  client->to_write = (size_t)(client->head.len - client->write_index);
   ssize_t write_status = 0;
 
   while ((client->to_write -= (size_t)write_status) &&
