@@ -103,10 +103,37 @@ bool case_equals(Str a, Str b)
   return true;
 }
 
-void trim_cr(Str *str)
+bool lws(char c)
+{
+  return c == ' ' || c == '\t';
+}
+
+Str *trim_cr(Str *str)
 {
   assert(str);
 
   if (str->len > 0 && str->data[str->len - 1] == '\r')
     str->len--;
+
+  return str;
 };
+
+Str *trim_lws(Str *str)
+{
+  assert(str);
+
+  if (str->len && lws(str->data[0]))
+  {
+    str->data++;
+    str->len--;
+  }
+
+  return str;
+};
+
+bool starts_with_lws(Str *str)
+{
+  assert(str);
+
+  return str->len && lws(str->data[0]);
+}

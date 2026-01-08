@@ -41,5 +41,13 @@ Str case_fold_str(Str str);
 // case insensitive version of equals
 bool case_equals(Str a, Str b);
 
+bool lws(char c);
+
 // removes \r from end
-void trim_cr(Str *str);
+Str *trim_cr(Str *str);
+
+// trim linear white space
+Str *trim_lws(Str *str);
+
+// linear white space check
+bool starts_with_lws(Str *str);

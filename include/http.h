@@ -18,8 +18,8 @@ bool find_empty_line(Str *head);
 bool parse_head(Connection *conn, Endpoint *endpoint);
 
 // returns true if all is good, return false and sets conn.status on error
-bool parse_request_line(Connection *conn, Endpoint *client);
+bool parse_request_line(Connection *conn, Str line);
 
-bool parse_status_line(Connection *conn, Endpoint *upstream);
+bool parse_status_line(Connection *conn, Str line);
 
 bool parse_headers(Connection *conn, Endpoint *endpoint);

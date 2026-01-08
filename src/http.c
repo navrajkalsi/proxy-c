@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "connection.h"
 #include "http.h"
@@ -18,14 +19,15 @@ bool find_empty_line(Str *head)
   if (!tmp.len)
     return false;
 
-  for (Cut line = cut_char(tmp, '\n'); head->len += line.found ? line.head.len + 1 : 0;
-       line = cut_char(tmp, '\n'))
-    if (!line.found) // read more
-      return false;
-    else if (!line.head.len || (line.head.len == 1 && *line.head.data == '\r')) // empty line found
+  for (Cut line = cut_char(tmp, '\n'); line.found; line = cut_char(tmp, '\n'))
+  {
+    head->len += line.head.len + 1;
+
+    if (!line.head.len || (line.head.len == 1 && *line.head.data == '\r')) // empty line found
       return true;
-    else
-      tmp = line.tail;
+
+    tmp = line.tail;
+  }
 
   return false;
 }
@@ -41,28 +43,75 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
   bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
   assert(client || upstream);
 
-  if (client && !parse_request_line(conn, endpoint))
-    return err("parse_request_line", NULL);
-
-  if (upstream && !parse_status_line(conn, endpoint))
-    return err("parse_status_line", NULL);
-
-  assert(false);
-
-  // parse request line(client) or status line(upstream)
-  return true;
-}
-
-bool parse_request_line(Connection *conn, Endpoint *client)
-{
-  assert(conn && client);
-
-  Cut cut = cut_char(client->head, '\n');
-  assert(cut.found); // only to be used after empty line found
+  Cut cut = cut_char(endpoint->head, '\n');
+  assert(cut.found); // only use after finding empty line
   trim_cr(&cut.head);
 
+  // deal with first line, depending on the endpoint type
+  if (client && !parse_request_line(conn, cut.head))
+    return err("parse_request_line", NULL);
+
+  if (upstream && !parse_status_line(conn, cut.head))
+    return err("parse_status_line", NULL);
+
+  // now parse headers, endpoint agnostic
+  for (cut = cut_char(cut.tail, '\n'); cut.found; cut = cut_char(cut.tail, '\n'))
+  {
+    trim_cr(&cut.head);
+    if (!cut.head.len)
+    { // parsed all
+      endpoint->headers_found = true;
+      return true;
+    }
+
+    Cut pair = cut_char(cut.head, ':');
+    if (!pair.found || starts_with_lws(&cut.head))
+    { // bad header
+      conn->status = client ? 400 : 500;
+      return err("check_lws", NULL);
+    }
+
+    Str key = pair.head, value = *trim_lws(&pair.tail);
+    if (case_equals(key, STR("connection")))
+    {
+      if (endpoint->headers.connection.len)
+        goto repeat_header;
+      endpoint->headers.connection = value;
+    }
+    if (case_equals(key, STR("host")))
+    {
+      if (endpoint->headers.host.len)
+        goto repeat_header;
+      endpoint->headers.host = value;
+    }
+    if (case_equals(key, STR("content-length")))
+    {
+      if (endpoint->headers.content_length.len)
+        goto repeat_header;
+      endpoint->headers.content_length = value;
+    }
+    if (case_equals(key, STR("transfer-encoding")))
+    {
+      if (endpoint->headers.transfer_encoding.len)
+        goto repeat_header;
+      endpoint->headers.transfer_encoding = value;
+    }
+  }
+
+  // should not reach here, for loop returns on empty line
+  assert(false);
+
+repeat_header:
+  conn->status = client ? 400 : 500;
+  return err("check_header", "Repeat header found");
+}
+
+bool parse_request_line(Connection *conn, Str line)
+{
+  assert(conn && line.len);
+
   // request method
-  cut = cut_char(cut.head, ' ');
+  Cut cut = cut_char(line, ' ');
   if (!cut.found)
   {
     conn->status = 400;
@@ -104,18 +153,14 @@ bool parse_request_line(Connection *conn, Endpoint *client)
   return true;
 }
 
-bool parse_status_line(Connection *conn, Endpoint *upstream)
+bool parse_status_line(Connection *conn, Str line)
 {
-  assert(conn && upstream);
+  assert(conn && line.len);
 
   conn->status = 500; // in case of error with upstream, 500 can be set before hand
 
-  Cut cut = cut_char(upstream->head, '\n');
-  assert(cut.found); // only to be used after empty line found
-  trim_cr(&cut.head);
-
   // protocol
-  cut = cut_char(cut.head, ' ');
+  Cut cut = cut_char(line, ' ');
   if (!cut.found)
     return err("cut_char", "Malformed Status Line");
   else if (!equals(cut.head, conn->protocol)) // compare against request protocol
