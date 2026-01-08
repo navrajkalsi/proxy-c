@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "connection.h"
@@ -39,7 +40,6 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
   assert(!endpoint->headers_found);
 
   // catering to both client and upstream
-  // rejecting body for client, accepting body from upstream
   bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
   assert(client || upstream);
 
@@ -68,42 +68,33 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
     if (!pair.found || starts_with_lws(&cut.head))
     { // bad header
       conn->status = client ? 400 : 500;
-      return err("check_lws", NULL);
+      return err("check_lws", "Malformed header");
     }
 
-    Str key = pair.head, value = *trim_lws(&pair.tail);
+    Str key = pair.head, value = *trim_lws(&pair.tail), *found = NULL;
+
     if (case_equals(key, STR("connection")))
-    {
-      if (endpoint->headers.connection.len)
-        goto repeat_header;
-      endpoint->headers.connection = value;
-    }
-    if (case_equals(key, STR("host")))
-    {
-      if (endpoint->headers.host.len)
-        goto repeat_header;
-      endpoint->headers.host = value;
-    }
+      found = &endpoint->headers.connection;
+    if (client && case_equals(key, STR("host"))) // host is a request header
+      found = &endpoint->headers.host;
     if (case_equals(key, STR("content-length")))
-    {
-      if (endpoint->headers.content_length.len)
-        goto repeat_header;
-      endpoint->headers.content_length = value;
-    }
+      found = &endpoint->headers.content_length;
     if (case_equals(key, STR("transfer-encoding")))
+      found = &endpoint->headers.transfer_encoding;
+
+    if (found)
     {
-      if (endpoint->headers.transfer_encoding.len)
-        goto repeat_header;
-      endpoint->headers.transfer_encoding = value;
+      if (found->len)
+      {
+        conn->status = client ? 400 : 500;
+        return err("check_header", "Duplicate header found");
+      }
+      *found = value;
     }
   }
 
   // should not reach here, for loop returns on empty line
   assert(false);
-
-repeat_header:
-  conn->status = client ? 400 : 500;
-  return err("check_header", "Repeat header found");
 }
 
 bool parse_request_line(Connection *conn, Str line)
@@ -137,7 +128,7 @@ bool parse_request_line(Connection *conn, Str line)
   }
   else if (*cut.head.data != '/') // only supporting origin form of request targets
   {
-    conn->status = 500;
+    conn->status = 501;
     return err("check_request_target", "Request target method not supported");
   }
   conn->path = cut.head;
@@ -177,9 +168,55 @@ bool parse_status_line(Connection *conn, Str line)
   return true;
 }
 
-bool parse_headers(Connection *conn, Endpoint *endpoint)
+bool verify_headers(Connection *conn, Endpoint *endpoint)
 {
   assert(conn && endpoint);
 
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+  assert(client || upstream);
+
+  // parse request and response headers
+
   return true;
+}
+
+char *get_status_string(uint status)
+{
+  // these strings live for the entire life of the program
+  switch (status)
+  {
+  case 200:
+    return "200 OK";
+  case 301:
+    return "301 Moved Permanently";
+  case 400:
+    return "400 Bad Request";
+  case 403:
+    return "403 Forbidden";
+  case 404:
+    return "404 Not Found";
+  case 405:
+    return "405 Method Not Allowed";
+  case 408:
+    return "408 Request Timout";
+  case 413:
+    return "413 Content Too Large";
+  case 431:
+    return "431 Request Header Fields Too Large";
+  case 500:
+    return "500 Internal Server Error";
+  case 501:
+    return "501 Not Implemented";
+  case 504:
+    return "504 Gateway Timeout";
+  case 505:
+    return "505 HTTP Version Not Supported";
+  }
+
+  assert(false);
+}
+
+Str get_status_str(uint status)
+{
+  return WRAP_STR(get_status_string(status));
 }

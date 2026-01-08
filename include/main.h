@@ -5,6 +5,11 @@
   {                                                                                                \
     chars, (ptrdiff_t)(sizeof(chars) - 1)                                                          \
   }
+#define WRAP_STR(chars)                                                                            \
+  (Str)                                                                                            \
+  {                                                                                                \
+    chars, (ptrdiff_t)strlen(chars)                                                                \
+  }
 #define NULL_STR (Str){NULL, 0}
 #define HTTPS STR("https")
 #define HTTP STR("http")

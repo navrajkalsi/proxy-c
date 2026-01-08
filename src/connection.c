@@ -159,7 +159,6 @@ void reset_conn(Connection *conn)
 
   conn->status = 0;
   conn->protocol = NULL_STR;
-  conn->host = NULL_STR;
   conn->path = NULL_STR;
   conn->keep_alive = false;
   conn->complete = false;
@@ -314,150 +313,150 @@ bool find_last_chunk(Endpoint *endpoint)
   return false;
 }
 
-// bool parse_headers(Connection *conn, Endpoint *endpoint)
-// {
-//   assert(conn && endpoint);
-//
-//   // this function should not be used after the headers are read
-//   assert(!endpoint->headers_found);
-//   assert(endpoint->buffer[endpoint->read_index] == '\0');
-//
-//   // catering to both client and upstream
-//   // rejecting body for client
-//   // accepting body from upstream
-//   bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
-//
-//   if (!client && !upstream)
-//     return err("verify_endpoint", "Unknown endpoint");
-//
-//   char *headers_end = NULL;
-//   if (!(headers_end = strstr(endpoint->buffer, TRAILER.data)))
-//   {
-//     if ((size_t)endpoint->read_index >= BUFFER_SIZE - 1)
-//     { // no space left
-//       conn->status = client ? 431 : 500;
-//       return err("strstr", "Headers too large");
-//     }
-//     return true; // read more
-//   }
-//   else
-//     endpoint->headers_found = true;
-//
-//   headers_end += TRAILER.len; // now past the last \n
-//
-//   endpoint->head.data = endpoint->buffer;
-//   endpoint->head.len = headers_end - endpoint->buffer;
-//
-//   // tmp null termination for get_header_value(), so I do not get to the next
-//   // request or search for the header in the body (if read)
-//   char org_char = *headers_end;
-//   *headers_end = '\0';
-//
-//   Str misc = NULL_STR; // misc str to contain the header value
-//
-//   // if (get_header_value(endpoint->buffer, "Connection", &misc))
-//   if (true)
-//   {
-//     Str *conn_header = &misc;
-//
-//     if (equals(*conn_header, STR("close"))) // close if either side wants to close
-//       conn->keep_alive = false;
-//     else if (equals(*conn_header, STR("keep-alive")))
-//     {
-//       if (client)
-//         conn->keep_alive = true;
-//       else // only keep alive if client also want to
-//         conn->keep_alive = conn->keep_alive ? true : false;
-//     }
-//     else
-//     {
-//       *headers_end = org_char;
-//       conn->status = client ? 400 : 500;
-//       return err("verify_connection_header", "Invalid connection header value");
-//     }
-//   }
-//
-//   misc = NULL_STR;
-//   // if (get_header_value(endpoint->buffer, "Content-Length", &misc))
-//   if (true)
-//   {
-//     *headers_end = org_char;
-//     Str *content_len_str = &misc;
-//
-//     for (int i = 0; i < content_len_str->len; i++)
-//       if (!isdigit(content_len_str->data[i]))
-//       {
-//         conn->status = client ? 400 : 500;
-//         return err("isdigit", "Invalid content-length header value");
-//       }
-//
-//     // a null terminated str for atoi()
-//     char *tmp = strndup(content_len_str->data, (size_t)content_len_str->len);
-//     endpoint->content_len = (size_t)atoi(tmp);
-//     free(tmp);
-//
-//     if (!endpoint->content_len) // empty body
-//       goto read_complete;
-//
-//     if (endpoint->content_len > 10 * MB)
-//     {
-//       conn->status = client ? 413 : 500;
-//       return err("verify_content_len", "Content too large");
-//     }
-//
-//     size_t full_size = (size_t)endpoint->head.len + endpoint->content_len;
-//
-//     if (full_size == (size_t)endpoint->read_index) // body read already, but nothing else
-//       goto read_complete;
-//
-//     if (full_size < (size_t)endpoint->read_index)
-//     {                                                  // body read and another request
-//       endpoint->next_index = (ptrdiff_t)full_size + 1; // will be copied to the start for next
-//       read goto read_complete;
-//     }
-//
-//     endpoint->to_read = full_size - (size_t)endpoint->read_index;
-//
-//     if (client) // no need to store body for client
-//       goto disregard_body;
-//
-//     return true; // store body for upstream
-//   }
-//   // else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc))
-//   else if (true)
-//   {
-//     *headers_end = org_char;
-//     Str *transfer_encoding = &misc;
-//
-//     if (!equals(*transfer_encoding, STR("chunked")))
-//     {
-//       conn->status = client ? 411 : 500;
-//       return err("verify_encoding", "Encoding method not supported");
-//     }
-//
-//     // finding full last chunk or partial from last few bytes
-//     // worst case, got: '0\r\n\r'
-//     if (find_last_chunk(endpoint))
-//       goto read_complete;
-//
-//     endpoint->chunked = true;
-//
-//     if (client)
-//       goto disregard_body;
-//
-//     return true;
-//   }
-//   else
-//     *headers_end = org_char;
-//
-// read_complete:
-//   endpoint->to_read = 0;
-//   return true;
-//
-// disregard_body:
-//   endpoint->read_index = endpoint->head.len;
-//   return true;
-// }
+bool parse_headers(Connection *conn, Endpoint *endpoint)
+{
+  assert(conn && endpoint);
+
+  // this function should not be used after the headers are read
+  assert(!endpoint->headers_found);
+  assert(endpoint->buffer[endpoint->read_index] == '\0');
+
+  // catering to both client and upstream
+  // rejecting body for client
+  // accepting body from upstream
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+
+  if (!client && !upstream)
+    return err("verify_endpoint", "Unknown endpoint");
+
+  char *headers_end = NULL;
+  if (!(headers_end = strstr(endpoint->buffer, TRAILER.data)))
+  {
+    if ((size_t)endpoint->read_index >= BUFFER_SIZE - 1)
+    { // no space left
+      conn->status = client ? 431 : 500;
+      return err("strstr", "Headers too large");
+    }
+    return true; // read more
+  }
+  else
+    endpoint->headers_found = true;
+
+  headers_end += TRAILER.len; // now past the last \n
+
+  endpoint->head.data = endpoint->buffer;
+  endpoint->head.len = headers_end - endpoint->buffer;
+
+  // tmp null termination for get_header_value(), so I do not get to the next
+  // request or search for the header in the body (if read)
+  char org_char = *headers_end;
+  *headers_end = '\0';
+
+  Str misc = NULL_STR; // misc str to contain the header value
+
+  // if (get_header_value(endpoint->buffer, "Connection", &misc))
+  if (true)
+  {
+    Str *conn_header = &misc;
+
+    if (equals(*conn_header, STR("close"))) // close if either side wants to close
+      conn->keep_alive = false;
+    else if (equals(*conn_header, STR("keep-alive")))
+    {
+      if (client)
+        conn->keep_alive = true;
+      else // only keep alive if client also want to
+        conn->keep_alive = conn->keep_alive ? true : false;
+    }
+    else
+    {
+      *headers_end = org_char;
+      conn->status = client ? 400 : 500;
+      return err("verify_connection_header", "Invalid connection header value");
+    }
+  }
+
+  misc = NULL_STR;
+  // if (get_header_value(endpoint->buffer, "Content-Length", &misc))
+  if (true)
+  {
+    *headers_end = org_char;
+    Str *content_len_str = &misc;
+
+    for (int i = 0; i < content_len_str->len; i++)
+      if (!isdigit(content_len_str->data[i]))
+      {
+        conn->status = client ? 400 : 500;
+        return err("isdigit", "Invalid content-length header value");
+      }
+
+    // a null terminated str for atoi()
+    char *tmp = strndup(content_len_str->data, (size_t)content_len_str->len);
+    endpoint->content_len = (size_t)atoi(tmp);
+    free(tmp);
+
+    if (!endpoint->content_len) // empty body
+      goto read_complete;
+
+    if (endpoint->content_len > 10 * MB)
+    {
+      conn->status = client ? 413 : 500;
+      return err("verify_content_len", "Content too large");
+    }
+
+    size_t full_size = (size_t)endpoint->head.len + endpoint->content_len;
+
+    if (full_size == (size_t)endpoint->read_index) // body read already, but nothing else
+      goto read_complete;
+
+    if (full_size < (size_t)endpoint->read_index)
+    {                                                  // body read and another request
+      endpoint->next_index = (ptrdiff_t)full_size + 1; // will be copied to the start for next read
+      goto read_complete;
+    }
+
+    endpoint->to_read = full_size - (size_t)endpoint->read_index;
+
+    if (client) // no need to store body for client
+      goto disregard_body;
+
+    return true; // store body for upstream
+  }
+  // else if (get_header_value(endpoint->buffer, "Transfer-Encoding", &misc))
+  else if (true)
+  {
+    *headers_end = org_char;
+    Str *transfer_encoding = &misc;
+
+    if (!equals(*transfer_encoding, STR("chunked")))
+    {
+      conn->status = client ? 411 : 500;
+      return err("verify_encoding", "Encoding method not supported");
+    }
+
+    // finding full last chunk or partial from last few bytes
+    // worst case, got: '0\r\n\r'
+    if (find_last_chunk(endpoint))
+      goto read_complete;
+
+    endpoint->chunked = true;
+
+    if (client)
+      goto disregard_body;
+
+    return true;
+  }
+  else
+    *headers_end = org_char;
+
+read_complete:
+  endpoint->to_read = 0;
+  return true;
+
+disregard_body:
+  endpoint->read_index = endpoint->head.len;
+  return true;
+}
 
 void check_conn(Connection *conn)
 {

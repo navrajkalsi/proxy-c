@@ -80,14 +80,37 @@ void read_request(Connection *conn)
                   ? SSL_read(client->ssl, client->buffer + client->read_index, (int)client->to_read)
                   : read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
   {
-    client->read_index += client->headers_found ? 0 : read_status; // keep headers intact
+    if (!client->headers_found)
+    {
+      // keep headers intact, reject body
+      client->read_index += read_status;
+      client->to_read -= read_status;
 
-    client->head.len = client->read_index;
-    if (find_empty_line(&client->head))
-      parse_head(conn, client);
-    else
-      assert(false);
+      if (!client->to_read)
+      { // headers too large
+        err("read_request", "Headers too large");
+        conn->status = 431;
+        goto error;
+      }
 
+      Str tmp_head = {.data = client->buffer, .len = client->read_index};
+      if (find_empty_line(&tmp_head)) // full headers found
+        client->head = tmp_head;
+      else
+        continue;
+
+      if (!parse_head(conn, client))
+      {
+        err("parse_head", NULL);
+        goto error;
+      }
+
+      if (!verify_headers(conn, client))
+      {
+        err("verify_headers", NULL);
+        goto error;
+      }
+    }
     assert(false);
 
     if (!client->headers_found)

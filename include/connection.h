@@ -34,7 +34,7 @@ typedef struct endpoint
   int fd;
   ptrdiff_t read_index;       // where to start reading again
   ptrdiff_t write_index;      // where to start writing from
-  size_t to_read;             // more bytes to read, also used for content-length
+  size_t to_read;             // more bytes to read
   size_t to_write;            // bytes remaining to write, across writes
   ptrdiff_t next_index;       // incase 2 or more requests/responses arrive back to back
   size_t content_len;         // for client - len of req body,upstream - len of res body
@@ -55,7 +55,6 @@ typedef struct connection
   Endpoint upstream;
   Str path;
   Str protocol;
-  Str host;
   struct connection **self_ptr; // this will be an element of active_conns array, used to
                                 // deactive/remove from active_conns(just make this NULL)
   State state;
