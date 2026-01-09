@@ -34,6 +34,8 @@ typedef struct endpoint
   int fd;
   ptrdiff_t read_index;       // where to start reading again
   ptrdiff_t write_index;      // where to start writing from
+  size_t bytes_read;          // total bytes read across reads
+  size_t bytes_wrote;         // total bytes wrote across writes
   size_t to_read;             // more bytes to read
   size_t to_write;            // bytes remaining to write, across writes
   ptrdiff_t next_index;       // incase 2 or more requests/responses arrive back to back

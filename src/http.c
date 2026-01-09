@@ -287,24 +287,35 @@ bool check_body(Connection *conn, Endpoint *endpoint)
   assert(client || upstream);
 
   if (!endpoint->content_len && !endpoint->chunked)
-    return true;
+    goto body_complete;
 
   if (endpoint->content_len)
   {
     if (endpoint->read_index == endpoint->head.len + (ptrdiff_t)endpoint->content_len)
-      return true;
+      goto body_complete;
 
-    size_t body_len = (size_t)endpoint->head.len + endpoint->content_len;
-    bool extra = body_len < endpoint->read_index;
+    size_t full_len = (size_t)endpoint->head.len + endpoint->content_len;
+    bool extra = full_len < endpoint->read_index;
 
     if (extra)
     {
-      endpoint->next_index = (ptrdiff_t)body_len + 1;
-      return true;
+      endpoint->next_index = (ptrdiff_t)full_len;
+      goto body_complete;
     }
 
-    client->to_read = client->content_len - (size_t)(client->read_index - client->head.len);
+    endpoint->to_read = endpoint->content_len - (size_t)(endpoint->read_index - endpoint->head.len);
   }
+
+  if (endpoint->chunked)
+    return check_last_chunk(endpoint);
+
+  if (client) // discard body for client
+    endpoint->read_index = endpoint->head.len;
+  return false;
+
+body_complete:
+  endpoint->to_read = 0;
+  return true;
 };
 
 char *get_status_string(uint status)

@@ -27,7 +27,11 @@ bool verify_headers(Connection *conn, Endpoint *endpoint);
 
 // returns true if body has been read
 // determines size of body by content len or transfer chunked
+// only to be used once per request, right after parsing verifying headers
 bool check_body(Connection *conn, Endpoint *endpoint);
+
+// returns true if last chunk is found
+bool check_last_chunk(Endpoint *endpoint);
 
 char *get_status_string(uint status);
 

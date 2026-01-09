@@ -113,27 +113,11 @@ void read_request(Connection *conn)
         goto error;
       }
 
-      if (client->content_len)
+      if (check_body(conn, client))
       {
-        if (client->read_index == client->head.len + (ptrdiff_t)client->content_len)
-        {
-          conn->state = CONNECT_UPSTREAM;
-          break;
-        }
-
-        size_t extra = (size_t)client->head.len + client->content_len > (size_t)client->read_index
-                           ? 0
-                           : (size_t)(client->read_index - client->head.len) - client->content_len;
-        if (extra)
-        {
-          client->next_index = client->head.len + (ptrdiff_t)client->content_len + 1;
-          conn->state = CONNECT_UPSTREAM;
-          break;
-        }
-
-        client->to_read = client->content_len - (size_t)(client->read_index - client->head.len);
+        conn->state = CONNECT_UPSTREAM;
+        break;
       }
-      else if (client->chunked)
     }
     assert(false);
 
@@ -169,10 +153,6 @@ void read_request(Connection *conn)
     }
   }
 
-  return;
-
-verify:
-  conn->state = VERIFY_REQUEST;
   return;
 
 error:
