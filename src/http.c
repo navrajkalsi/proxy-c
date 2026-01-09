@@ -8,7 +8,9 @@
 
 #include "connection.h"
 #include "http.h"
+#include "proxy.h"
 #include "str.h"
+#include "url.h"
 #include "utils.h"
 
 bool find_empty_line(Str *head)
@@ -175,10 +177,135 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
   bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
   assert(client || upstream);
 
-  // parse request and response headers
+  Headers *headers = &endpoint->headers;
+
+  if (headers->content_length.len && headers->transfer_encoding.len)
+  {
+    conn->status = client ? 400 : 500;
+    return err("check_body_size_type", "Both Content Length and Transfer Encoding headers found");
+  }
+
+  if (headers->connection.len)
+  {
+    // keepalive for client and only for upstream if keepalive from client
+    if (case_equals(headers->connection, STR("keep-alive")))
+      conn->keep_alive = client || conn->keep_alive ? true : false;
+    // close if either wants to close
+    else if (case_equals(headers->connection, STR("close")))
+      conn->keep_alive = false;
+    else
+    {
+      conn->status = client ? 400 : 500;
+      return err("verify_connection", "Invalid connection header");
+    }
+  }
+  else if (client && equals(conn->protocol,
+                            STR("HTTP/1.1"))) // set default based on protocol in case of client
+    conn->keep_alive = true;
+
+  if (client) // host is only a request header
+  {
+    if (headers->host.len)
+    {
+      URL url = {0};
+      if (!parse_url(headers->host, &url))
+      {
+        conn->status = 400;
+        return err("parse_host", "Invalid host header");
+      }
+
+      if (url.protocol.len || url.path.len || url.params.len || url.frags.len)
+      {
+        conn->status = 400;
+        return err("verify_host", "Invalid host header");
+      }
+
+      // match host to canonical
+      if (!equals(url.host, config.canonical_host.host) ||
+          !equals(url.port, config.canonical_host.port))
+      {
+        conn->status = 301;
+        return err("verify_host", "Host mismatch");
+      }
+    }
+    else if (equals(conn->protocol, STR("HTTP/1.1"))) // host header requried for http/1.1
+    {
+      conn->status = 400;
+      return err("parse_host", "Host header missing");
+    }
+  }
+
+  if (headers->content_length.len)
+  {
+    char local[headers->content_length.len + 1];
+    memcpy(local, headers->content_length.data, headers->content_length.len);
+    local[headers->content_length.len] = '\0';
+
+    char *end = NULL;
+    const long content_len = strtol(local, &end, 10);
+
+    if (end == local)
+    {
+      conn->status = client ? 400 : 500;
+      return err("strtol", "Invalid Content Length");
+    }
+
+    if (*end != '\0' || content_len < 0)
+    {
+      conn->status = client ? 400 : 500;
+      return err("strtol", "Content Length is not a positive decimal number");
+    }
+
+    if (content_len > 10 * MB)
+    {
+      conn->status = client ? 413 : 500;
+      return err("verify_content_len", "Content Length too large");
+    }
+
+    endpoint->content_len = (size_t)content_len;
+  }
+
+  if (headers->transfer_encoding.len)
+  {
+    if (!case_equals(headers->transfer_encoding, STR("chunked")))
+    { // other values will likely never be used
+      conn->status = client ? 400 : 500;
+      return err("verify_transfer_encoding", "Invalid Transfer Encoding header");
+    }
+    endpoint->chunked = true;
+  }
 
   return true;
 }
+
+bool check_body(Connection *conn, Endpoint *endpoint)
+{
+  assert(conn && endpoint);
+  assert(!endpoint->content_len || !endpoint->chunked);
+
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+  assert(client || upstream);
+
+  if (!endpoint->content_len && !endpoint->chunked)
+    return true;
+
+  if (endpoint->content_len)
+  {
+    if (endpoint->read_index == endpoint->head.len + (ptrdiff_t)endpoint->content_len)
+      return true;
+
+    size_t body_len = (size_t)endpoint->head.len + endpoint->content_len;
+    bool extra = body_len < endpoint->read_index;
+
+    if (extra)
+    {
+      endpoint->next_index = (ptrdiff_t)body_len + 1;
+      return true;
+    }
+
+    client->to_read = client->content_len - (size_t)(client->read_index - client->head.len);
+  }
+};
 
 char *get_status_string(uint status)
 {

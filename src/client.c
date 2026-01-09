@@ -82,6 +82,8 @@ void read_request(Connection *conn)
   {
     if (!client->headers_found)
     {
+      assert(!client->content_len);
+      assert(!client->chunked);
       // keep headers intact, reject body
       client->read_index += read_status;
       client->to_read -= read_status;
@@ -110,34 +112,31 @@ void read_request(Connection *conn)
         err("verify_headers", NULL);
         goto error;
       }
+
+      if (client->content_len)
+      {
+        if (client->read_index == client->head.len + (ptrdiff_t)client->content_len)
+        {
+          conn->state = CONNECT_UPSTREAM;
+          break;
+        }
+
+        size_t extra = (size_t)client->head.len + client->content_len > (size_t)client->read_index
+                           ? 0
+                           : (size_t)(client->read_index - client->head.len) - client->content_len;
+        if (extra)
+        {
+          client->next_index = client->head.len + (ptrdiff_t)client->content_len + 1;
+          conn->state = CONNECT_UPSTREAM;
+          break;
+        }
+
+        client->to_read = client->content_len - (size_t)(client->read_index - client->head.len);
+      }
+      else if (client->chunked)
     }
     assert(false);
 
-    if (!client->headers_found)
-    {
-      if (!parse_headers(conn, client))
-        goto error;
-
-      // no content len or encoding was specified or full request read
-      if (client->headers_found && !client->to_read)
-        goto verify;
-    }
-    else if (client->content_len)
-    { // bytes left from content len
-      size_t extra =
-          (size_t)read_status > client->to_read ? (size_t)read_status - client->to_read : 0;
-
-      if (extra)
-      {
-        client->next_index = client->read_index + (ptrdiff_t)client->to_read;
-        client->to_read = 0;
-      }
-      else
-        client->to_read -= (size_t)read_status;
-
-      if (!client->to_read)
-        goto verify;
-    }
     else if (client->chunked)
     { // checking for last chunk, was not received during parse_headers()
       if (find_last_chunk(client))
@@ -228,7 +227,7 @@ bool verify_request(Connection *conn)
     conn->status = 500;
     return err("validate_http", "Invalid HTTP version");
   }
-  conn->protocol = c.head;
+  // conn->protocol = c.head;
 
   // finding the host header
   // if (!get_header_value(c.tail.data, "Host", &conn->host))

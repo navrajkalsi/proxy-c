@@ -25,6 +25,10 @@ bool parse_status_line(Connection *conn, Str line);
 
 bool verify_headers(Connection *conn, Endpoint *endpoint);
 
+// returns true if body has been read
+// determines size of body by content len or transfer chunked
+bool check_body(Connection *conn, Endpoint *endpoint);
+
 char *get_status_string(uint status);
 
 Str get_status_str(uint status);
