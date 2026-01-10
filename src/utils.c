@@ -128,8 +128,6 @@ const char *get_state_string(int state)
     return "tls_client";
   case READ_REQUEST:
     return "read_request";
-  case VERIFY_REQUEST:
-    return "verify_request";
   case WRITE_ERROR:
     return "write_error";
   case CONNECT_UPSTREAM:

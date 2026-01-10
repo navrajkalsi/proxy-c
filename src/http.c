@@ -281,20 +281,19 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
 bool check_body(Connection *conn, Endpoint *endpoint)
 {
   assert(conn && endpoint);
+  assert(endpoint->headers_found);
   assert(!endpoint->content_len || !endpoint->chunked);
-
-  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
-  assert(client || upstream);
 
   if (!endpoint->content_len && !endpoint->chunked)
     goto body_complete;
 
   if (endpoint->content_len)
   {
-    if (endpoint->read_index == endpoint->head.len + (ptrdiff_t)endpoint->content_len)
+    size_t full_len = (size_t)endpoint->head.len + endpoint->content_len;
+
+    if (endpoint->read_index == (ptrdiff_t)full_len)
       goto body_complete;
 
-    size_t full_len = (size_t)endpoint->head.len + endpoint->content_len;
     bool extra = full_len < endpoint->read_index;
 
     if (extra)
@@ -309,14 +308,18 @@ bool check_body(Connection *conn, Endpoint *endpoint)
   if (endpoint->chunked)
     return check_last_chunk(endpoint);
 
-  if (client) // discard body for client
-    endpoint->read_index = endpoint->head.len;
   return false;
 
 body_complete:
   endpoint->to_read = 0;
   return true;
 };
+
+bool check_last_chunk(Endpoint *endpoint)
+{
+  assert(endpoint);
+  assert(endpoint->headers_found);
+}
 
 char *get_status_string(uint status)
 {

@@ -289,22 +289,12 @@ again:
       err("setup_endpoint_tls", NULL);
       conn->state = CLOSE_CONN;
     }
-    break;
+    goto again;
 
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);
     arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
-
-  case VERIFY_REQUEST:
-    // if (*upstream_fd >= 0) // if reusing a upstream from previous res
-    //   conn->state = WRITE_REQUEST;
-    // else if (verify_request(conn))
-    //   conn->state = CONNECT_UPSTREAM;
-    // else
-    //   conn->state = WRITE_ERROR;
-    // print_request(conn);
-    goto again;
 
   case WRITE_ERROR:
     // fire and forget

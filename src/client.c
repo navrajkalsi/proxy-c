@@ -72,13 +72,14 @@ void read_request(Connection *conn)
   assert(!client->next_index);
 
   ssize_t read_status = 0;
+  size_t max_read = BUFFER_SIZE - (size_t)client->read_index;
 
   // new request should always start from the beginning of the buffer
-  while (client->to_read &&
-         (read_status =
-              client->ssl
-                  ? SSL_read(client->ssl, client->buffer + client->read_index, (int)client->to_read)
-                  : read(client->fd, client->buffer + client->read_index, client->to_read)) > 0)
+  while (
+      (max_read -= (size_t)read_status) &&
+      (read_status = client->ssl
+                         ? SSL_read(client->ssl, client->buffer + client->read_index, (int)max_read)
+                         : read(client->fd, client->buffer + client->read_index, max_read)) > 0)
   {
     if (!client->headers_found)
     {
@@ -86,9 +87,8 @@ void read_request(Connection *conn)
       assert(!client->chunked);
       // keep headers intact, reject body
       client->read_index += read_status;
-      client->to_read -= read_status;
 
-      if (!client->to_read)
+      if ((size_t)client->read_index == BUFFER_SIZE)
       { // headers too large
         err("read_request", "Headers too large");
         conn->status = 431;
@@ -96,10 +96,9 @@ void read_request(Connection *conn)
       }
 
       Str tmp_head = {.data = client->buffer, .len = client->read_index};
-      if (find_empty_line(&tmp_head)) // full headers found
-        client->head = tmp_head;
-      else
+      if (!find_empty_line(&tmp_head)) // full headers found
         continue;
+      client->head = tmp_head;
 
       if (!parse_head(conn, client))
       {
@@ -114,23 +113,32 @@ void read_request(Connection *conn)
       }
 
       if (check_body(conn, client))
-      {
-        conn->state = CONNECT_UPSTREAM;
-        break;
-      }
-    }
-    assert(false);
+        goto connect_upstream;
 
+      client->read_index = client->head.len; // discard body
+    }
+    else if (client->content_len)
+    {
+      bool extra = client->to_read < read_status;
+
+      if (extra)
+      {
+        client->next_index = client->head.len + (ptrdiff_t)client->to_read;
+        client->to_read = 0;
+      }
+      else
+        client->to_read -= (size_t)read_status;
+
+      if (!client->to_read)
+        goto connect_upstream;
+    }
     else if (client->chunked)
-    { // checking for last chunk, was not received during parse_headers()
-      if (find_last_chunk(client))
-        goto verify;
+    {
+      if (check_last_chunk(client))
+        goto connect_upstream;
     }
     else
-    {
-      err("verify_client_read", "No read condition met. Logic error!");
-      goto error;
-    }
+      assert(false); // logic error
   }
 
   if (read_status == 0)
@@ -149,6 +157,7 @@ void read_request(Connection *conn)
     else
     {
       err("read", strerror(errno));
+      conn->status = 500;
       goto error;
     }
   }
@@ -156,78 +165,13 @@ void read_request(Connection *conn)
   return;
 
 error:
+  assert(conn->status >= 300);
   conn->state = WRITE_ERROR;
-  conn->status = conn->status >= 300 ? conn->status : 500;
   return;
-}
 
-bool verify_request(Connection *conn)
-{
-  assert(conn);
-
-  assert(conn->state == VERIFY_REQUEST);
-
-  Endpoint *client = &conn->client;
-  Cut c = cut_char(client->head, ' ');
-
-  // verifying method
-  if (!c.found)
-  {
-    conn->status = 400;
-    return err("validate_method", "Invalid request");
-  }
-  // else if (!validate_method(c.head))
-  else if (true)
-  {
-    conn->status = 405;
-    return err("validate_method", "Invalid method");
-  }
-
-  // finding request path
-  c = cut_char(c.tail, ' ');
-
-  if (!c.found)
-  {
-    conn->status = 400;
-    return err("validate_path", "Invalid request");
-  }
-  conn->path = c.head;
-
-  // finding http version
-  c = cut_char(c.tail, '\r');
-
-  if (!c.found)
-  {
-    conn->status = 400;
-    return err("validate_http", "Invalid request");
-  }
-  // else if (!validate_http(c.head))
-  else if (true)
-  {
-    conn->status = 500;
-    return err("validate_http", "Invalid HTTP version");
-  }
-  // conn->protocol = c.head;
-
-  // finding the host header
-  // if (!get_header_value(c.tail.data, "Host", &conn->host))
-  if (true)
-  {
-    conn->status = 400;
-    return err("get_header_value", "Host header not found");
-  }
-
-  // if (!validate_host(&conn->host))
-  // {
-  //   conn->status = 301;
-  //   return err("validate_host", "Different host in the request header");
-  // }
-
-  // respecting client connection, in case of no error
-  // set_connection(conn->client.buffer, conn);
-  conn->status = 200;
-
-  return true;
+connect_upstream:
+  conn->state = CONNECT_UPSTREAM;
+  return;
 }
 
 void write_request(Connection *conn)

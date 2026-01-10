@@ -157,14 +157,14 @@ bool validate_port(Str port, long *port_out)
 {
   assert(port.len);
 
-  char string[port.len + 1];
-  memcpy(string, port.data, port.len);
-  string[port.len] = '\0';
+  char local[port.len + 1];
+  memcpy(local, port.data, port.len);
+  local[port.len] = '\0';
 
   char *end = NULL;
-  const long port_num = strtol(string, &end, 10);
+  const long port_num = strtol(local, &end, 10);
 
-  if (end == string) // comparing pointers
+  if (end == local) // comparing pointers
     return err("strtol", "No conversion performed");
 
   if (*end != '\0')
