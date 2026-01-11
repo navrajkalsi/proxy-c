@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "str.h"
+
 // Always returns false
 bool err(const char *function, const char *error);
 
@@ -32,3 +34,7 @@ void int_to_string(int num, char *out);
 const char *get_state_string(int state);
 
 void log_state(int state);
+
+bool str_to_long(Str str, long *num);
+
+bool str_to_long_hex(Str str, long *num);

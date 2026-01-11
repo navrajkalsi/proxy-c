@@ -237,26 +237,20 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
 
   if (headers->content_length.len)
   {
-    char local[headers->content_length.len + 1];
-    memcpy(local, headers->content_length.data, headers->content_length.len);
-    local[headers->content_length.len] = '\0';
-
-    char *end = NULL;
-    const long content_len = strtol(local, &end, 10);
-
-    if (end == local)
+    long content_len = -1;
+    if (!str_to_long(headers->content_length, &content_len))
     {
       conn->status = client ? 400 : 500;
-      return err("strtol", "Invalid Content Length");
+      return err("str_to_long", "Invalid Content Length");
     }
 
-    if (*end != '\0' || content_len < 0)
+    if (content_len < 0)
     {
       conn->status = client ? 400 : 500;
       return err("strtol", "Content Length is not a positive decimal number");
     }
 
-    if (content_len > 10 * MB)
+    if ((size_t)content_len > 10 * MB)
     {
       conn->status = client ? 413 : 500;
       return err("verify_content_len", "Content Length too large");
@@ -269,8 +263,8 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
   {
     if (!case_equals(headers->transfer_encoding, STR("chunked")))
     { // other values will likely never be used
-      conn->status = client ? 400 : 500;
-      return err("verify_transfer_encoding", "Invalid Transfer Encoding header");
+      conn->status = 501;
+      return err("verify_transfer_encoding", "Unknown Transfer Encoding header");
     }
     endpoint->chunked = true;
   }
@@ -294,7 +288,7 @@ bool check_body(Connection *conn, Endpoint *endpoint)
     if (endpoint->read_index == (ptrdiff_t)full_len)
       goto body_complete;
 
-    bool extra = full_len < endpoint->read_index;
+    bool extra = full_len < (size_t)endpoint->read_index;
 
     if (extra)
     {
@@ -306,7 +300,15 @@ bool check_body(Connection *conn, Endpoint *endpoint)
   }
 
   if (endpoint->chunked)
-    return check_last_chunk(endpoint);
+  {
+    Str body = {.data = endpoint->buffer + endpoint->head.len,
+                .len = endpoint->read_index - endpoint->head.len};
+
+    size_t extra = 0;
+
+    if (!check_empty_chunk(body, &endpoint->chunk_tracker, &extra))
+      NULL;
+  }
 
   return false;
 
@@ -315,10 +317,34 @@ body_complete:
   return true;
 };
 
-bool check_last_chunk(Endpoint *endpoint)
+void reset_chunk_tracker(ChunkTracker *tracker)
 {
-  assert(endpoint);
-  assert(endpoint->headers_found);
+  assert(tracker);
+
+  tracker->chunk_buffer_str.data = tracker->chunk_buffer;
+  tracker->chunk_buffer_str.len = 0;
+  tracker->chunk_len = 0;
+  tracker->bytes_read = 0;
+  tracker->empty_found = false;
+}
+
+// limitation: does not support chunk extensions
+bool check_empty_chunk(Str body, ChunkTracker *tracker, size_t *extra)
+{
+  assert(tracker);
+  assert(extra);
+  assert(!tracker->empty_found);
+
+  if (!body.len)
+    return false;
+
+  Cut c = {0};
+
+  if (!tracker->chunk_len && !tracker->bytes_read)
+  { // starting fresh
+    c = cut_str(body, CRLF);
+  }
+  return true;
 }
 
 char *get_status_string(uint status)

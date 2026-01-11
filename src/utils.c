@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stddef.h>
@@ -7,6 +8,7 @@
 
 #include "connection.h"
 #include "proxy.h"
+#include "str.h"
 #include "utils.h"
 
 bool err(const char *function, const char *error)
@@ -156,4 +158,58 @@ const char *get_state_string(int state)
 void log_state(int state)
 {
   puts(get_state_string(state));
+}
+
+bool str_to_long(Str str, long *num)
+{
+  assert(str.len);
+  assert(num);
+
+  if (str.len > 64)
+    return err("verify_str_len", "Potential number longer than long");
+
+  char local[str.len + 1], *end = NULL;
+  memcpy(local, str.data, str.len);
+  local[str.len] = '\0';
+  errno = 0;
+
+  *num = strtol(local, &end, 10);
+
+  if (errno == ERANGE)
+    return err("strtol", "Overflow detected");
+
+  if (end == local) // comparing pointers
+    return err("strtol", "No conversion performed");
+
+  if (*end != '\0')
+    return err("strtol", "Supplied str is not a decimal number");
+
+  return true;
+}
+
+bool str_to_long_hex(Str str, long *num)
+{
+  assert(str.len);
+  assert(num);
+
+  if (str.len > 64)
+    return err("verify_str_len", "Potential number longer than long");
+
+  char local[str.len + 1], *end = NULL;
+  memcpy(local, str.data, str.len);
+  local[str.len] = '\0';
+  errno = 0;
+
+  *num = strtol(local, &end, 16);
+
+  if (errno == ERANGE)
+    return err("strtol", "Overflow detected");
+
+  if (end == local) // comparing pointers
+    return err("strtol", "No conversion performed");
+
+  if (*end != '\0')
+    return err("strtol", "Supplied str is not a hex number");
+
+  return true;
 }

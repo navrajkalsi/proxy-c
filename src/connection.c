@@ -149,7 +149,7 @@ void reset_conn(Connection *conn)
   client->content_len = upstream->content_len = 0;
   client->chunked = upstream->chunked = false;
   client->headers_found = upstream->headers_found = false;
-  *client->last_chunk_found = *upstream->last_chunk_found = '\0';
+  // TODO add chunk tracker
 
   client->headers.host = upstream->headers.host = NULL_STR;
   client->headers.connection = upstream->headers.connection = NULL_STR;

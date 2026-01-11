@@ -85,6 +85,8 @@ void read_request(Connection *conn)
     {
       assert(!client->content_len);
       assert(!client->chunked);
+      assert(!client->last_chunk.chunk_len);
+      assert(!client->last_chunk.bytes_read);
       // keep headers intact, reject body
       client->read_index += read_status;
 
@@ -119,7 +121,7 @@ void read_request(Connection *conn)
     }
     else if (client->content_len)
     {
-      bool extra = client->to_read < read_status;
+      bool extra = client->to_read < (size_t)read_status;
 
       if (extra)
       {

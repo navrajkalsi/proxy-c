@@ -31,16 +31,16 @@ typedef struct endpoint
   Str head; // start of request to empty line
   SSL *ssl;
   int fd;
-  ptrdiff_t read_index;  // where to start reading again
-  ptrdiff_t write_index; // where to start writing from
-  size_t to_read;        // more bytes to read
-  size_t to_write;       // bytes remaining to write, across writes
-  ptrdiff_t next_index;  // incase 2 or more requests/responses arrive back to back
-  size_t content_len;    // for client - len of req body,upstream - len of res body
-  bool chunked;          // transfer encoding
-  bool headers_found;    // if nothing more is needed to be read from the current request,
-                         // stop reading if new request is detected, in case of client
-  char last_chunk_found[sizeof "0\r\n\r\n"]; // how much of the last chunk was read
+  ptrdiff_t read_index;       // where to start reading again
+  ptrdiff_t write_index;      // where to start writing from
+  size_t to_read;             // more bytes to read
+  size_t to_write;            // bytes remaining to write, across writes
+  ptrdiff_t next_index;       // incase 2 or more requests/responses arrive back to back
+  size_t content_len;         // for client - len of req body,upstream - len of res body
+  bool chunked;               // transfer encoding
+  bool headers_found;         // if nothing more is needed to be read from the current request,
+                              // stop reading if new request is detected, in case of client
+  ChunkTracker chunk_tracker; // struct for tracking last chunk incase of chunked encoding
 } Endpoint;
 
 // struct to be used for adding/modding/deleting to the epoll instance

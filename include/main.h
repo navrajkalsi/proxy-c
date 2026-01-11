@@ -13,6 +13,7 @@
 #define NULL_STR (Str){NULL, 0}
 #define HTTPS STR("https")
 #define HTTP STR("http")
+#define CRLF STR("\r\n")
 #define LAST_CHUNK STR("0\r\n\r\n")
 #define TRAILER STR("\r\n\r\n")
 
@@ -27,6 +28,7 @@
 #endif
 
 #define BUFFER_SIZE (size_t)8192
+#define CHUNKED_BUFFER_SIZE (size_t)18
 #define MB (size_t)1048576
 #define READ_FLAGS (int)(EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define WRITE_FLAGS (int)(EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <netdb.h>
+#include <sched.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -157,18 +158,10 @@ bool validate_port(Str port, long *port_out)
 {
   assert(port.len);
 
-  char local[port.len + 1];
-  memcpy(local, port.data, port.len);
-  local[port.len] = '\0';
+  long port_num = -1;
 
-  char *end = NULL;
-  const long port_num = strtol(local, &end, 10);
-
-  if (end == local) // comparing pointers
-    return err("strtol", "No conversion performed");
-
-  if (*end != '\0')
-    return err("strtol", "Supplied port is not a decimal number");
+  if (!str_to_long(port, &port_num))
+    return err("str_to_long", NULL);
 
   if (port_num < 0 || port_num > 65535)
     return err("verify_port", "Port is out of range");

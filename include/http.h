@@ -1,8 +1,28 @@
-#include "str.h"
 #include <sys/types.h>
+
+#include "main.h"
+#include "str.h"
 
 typedef struct connection Connection;
 typedef struct endpoint Endpoint;
+
+typedef enum chunked_state
+{            // what part of a chunk are we reading
+  START,     // read first chunk
+  SIZE_CRLF, // hex encoded size
+  CHUNK,     // actual chunk bytes
+  END_CRLF   // ending delimiter
+} ChunkedState;
+
+typedef struct chunk_tracker
+{
+  char chunk_buffer[CHUNKED_BUFFER_SIZE]; // max len (64 bit int) 16 bytes in hex and 2 for crlf
+  Str chunk_buffer_str;                   // str helper for buffer
+  ChunkedState state;
+  size_t chunk_len;
+  size_t bytes_read;
+  bool empty_found;
+} ChunkTracker;
 
 typedef struct headers
 {
@@ -30,8 +50,11 @@ bool verify_headers(Connection *conn, Endpoint *endpoint);
 // only to be used once per request, right after parsing verifying headers
 bool check_body(Connection *conn, Endpoint *endpoint);
 
-// returns true if last chunk is found
-bool check_last_chunk(Endpoint *endpoint);
+void reset_chunk_tracker(ChunkTracker *tracker);
+
+// returns false on error, sets emtpy_found in tracker to indicate that the body is compelete
+// extra is set to be used for next index
+bool check_empty_chunk(Str body, ChunkTracker *tracker, size_t *extra);
 
 char *get_status_string(uint status);
 
