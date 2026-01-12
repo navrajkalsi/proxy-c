@@ -69,7 +69,7 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
     Cut pair = cut_char(cut.head, ':');
     if (!pair.found || starts_with_lws(&cut.head))
     { // bad header
-      conn->status = client ? 400 : 500;
+      conn->status = client ? 400 : 502;
       return err("check_lws", "Malformed header");
     }
 
@@ -88,7 +88,7 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
     {
       if (found->len)
       {
-        conn->status = client ? 400 : 500;
+        conn->status = client ? 400 : 502;
         return err("check_header", "Duplicate header found");
       }
       *found = value;
@@ -150,7 +150,7 @@ bool parse_status_line(Connection *conn, Str line)
 {
   assert(conn && line.len);
 
-  conn->status = 500; // in case of error with upstream, 500 can be set before hand
+  conn->status = 502; // in case of error with upstream, 502 can be set before hand
 
   // protocol
   Cut cut = cut_char(line, ' ');
@@ -181,7 +181,7 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
 
   if (headers->content_length.len && headers->transfer_encoding.len)
   {
-    conn->status = client ? 400 : 500;
+    conn->status = client ? 400 : 502;
     return err("check_body_size_type", "Both Content Length and Transfer Encoding headers found");
   }
 
@@ -195,7 +195,7 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
       conn->keep_alive = false;
     else
     {
-      conn->status = client ? 400 : 500;
+      conn->status = client ? 400 : 502;
       return err("verify_connection", "Invalid connection header");
     }
   }
@@ -240,19 +240,19 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
     long content_len = -1;
     if (!str_to_long(headers->content_length, &content_len))
     {
-      conn->status = client ? 400 : 500;
+      conn->status = client ? 400 : 502;
       return err("str_to_long", "Invalid Content Length");
     }
 
     if (content_len < 0)
     {
-      conn->status = client ? 400 : 500;
+      conn->status = client ? 400 : 502;
       return err("strtol", "Content Length is not a positive decimal number");
     }
 
     if ((size_t)content_len > 10 * MB)
     {
-      conn->status = client ? 413 : 500;
+      conn->status = client ? 413 : 502;
       return err("verify_content_len", "Content Length too large");
     }
 
@@ -335,13 +335,13 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     { // just missing lf
       if (tracker->chunk_buffer_str.len >= MAX_CHUNKED_HEAD - 1)
       {
-        conn->status = client ? 501 : 500;
+        conn->status = client ? 501 : 502;
         return err("verify_head_len", "Head of the chunk too long");
       }
 
       if (*body.data != '\n') // first char should be lf
       {
-        conn->status = client ? 400 : 500;
+        conn->status = client ? 400 : 502;
         return err("verify_head_crlf", "Malformed CRLF");
       }
 
@@ -363,7 +363,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
       Cut c = cut_str(body, CRLF);
       if (!c.found && tracker->chunk_buffer_str.len + body.len + CRLF.len > MAX_CHUNKED_HEAD)
       {
-        conn->status = client ? 501 : 500;
+        conn->status = client ? 501 : 502;
         return err("verify_head_len", "Head of the chunk too long");
       }
 
@@ -391,7 +391,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     Cut c = cut_str(body, CRLF);
     if (!c.found && body.len + CRLF.len > MAX_CHUNKED_HEAD)
     {
-      conn->status = client ? 501 : 500;
+      conn->status = client ? 501 : 502;
       return err("verify_head_len", "Head of the chunk too long");
     }
 
@@ -439,7 +439,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
       assert(*tracker->chunk_buffer_str.data == '\r');
       if (*body.data != '\n')
       {
-        conn->status = client ? 400 : 500;
+        conn->status = client ? 400 : 502;
         return err("verify_tail_crlf", "Malformed CRLF");
       }
 
@@ -462,7 +462,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
     if (*body.data != '\r')
     {
-      conn->status = client ? 400 : 500;
+      conn->status = client ? 400 : 502;
       return err("verify_tail_crlf", "Malformed CRLF");
     }
 
@@ -475,14 +475,14 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
     if (body.data[1] != '\n')
     {
-      conn->status = client ? 400 : 500;
+      conn->status = client ? 400 : 502;
       return err("verify_tail_crlf", "Malformed CRLF");
     }
 
     if (!tracker->chunk_len && !tracker->bytes_read)
     { // done
       tracker->empty_found = true;
-      if (body.len > 1) // next request to read
+      if (body.len > CRLF.len) // next request to read
         endpoint->next_index = body.data + CRLF.len - endpoint->buffer;
       return true;
     }
@@ -529,14 +529,14 @@ bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint)
 
   if (contains(head, STR(";")) != -1)
   {
-    conn->status = client ? 501 : 500;
+    conn->status = client ? 501 : 502;
     return err("contains", "Extensions detected in chunk head");
   }
 
   long size = -1;
   if (!str_to_long_hex(head, &size))
   {
-    conn->status = client ? 400 : 500;
+    conn->status = client ? 400 : 502;
     return err("str_to_long_hex", NULL);
   }
 
@@ -575,6 +575,8 @@ char *get_status_string(uint status)
     return "500 Internal Server Error";
   case 501:
     return "501 Not Implemented";
+  case 502:
+    return "502 Bad Gateway";
   case 504:
     return "504 Gateway Timeout";
   case 505:
