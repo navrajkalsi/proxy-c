@@ -317,10 +317,194 @@ body_complete:
   return true;
 };
 
+// limitation: does not support chunk extensions and trailers in the last chunk
+bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
+{
+  assert(conn && endpoint);
+  assert(body.len);
+
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+  assert(client || upstream);
+
+  ChunkTracker *tracker = &endpoint->chunk_tracker;
+
+  if (tracker->state == HEAD_CRLF)
+  {
+    if (tracker->chunk_buffer_str.len &&
+        tracker->chunk_buffer[tracker->chunk_buffer_str.len - 1] == '\r')
+    { // just missing lf
+      if (tracker->chunk_buffer_str.len >= MAX_CHUNKED_HEAD - 1)
+      {
+        conn->status = client ? 501 : 500;
+        return err("verify_head_len", "Head of the chunk too long");
+      }
+
+      if (*body.data != '\n') // first char should be lf
+      {
+        conn->status = client ? 400 : 500;
+        return err("verify_head_crlf", "Malformed CRLF");
+      }
+
+      tracker->chunk_buffer_str.data[tracker->chunk_buffer_str.len++] = '\n';
+
+      if (!extract_chunk_size(tracker->chunk_buffer_str, conn, endpoint))
+        return err("extract_chunk_size", NULL);
+
+      tracker->chunk_buffer_str.len = 0;
+      body.data++;
+      if (!--body.len) // read more from endpoint
+        return true;
+
+      return handle_chunked(body, conn, endpoint);
+    }
+
+    if (tracker->chunk_buffer_str.len)
+    { // try to find crlf, if not add to buffer if the size allows
+      Cut c = cut_str(body, CRLF);
+      if (!c.found && tracker->chunk_buffer_str.len + body.len + CRLF.len > MAX_CHUNKED_HEAD)
+      {
+        conn->status = client ? 501 : 500;
+        return err("verify_head_len", "Head of the chunk too long");
+      }
+
+      // copy to buffer, in case continuing to read, or extracting chunk len
+      ptrdiff_t copy = c.found ? c.head.len + CRLF.len : body.len;
+      memcpy(tracker->chunk_buffer + tracker->chunk_buffer_str.len, body.data, copy);
+      tracker->chunk_buffer_str.len += copy;
+
+      if (!c.found) // continue reading chunk header
+        return true;
+
+      if (!extract_chunk_size(tracker->chunk_buffer_str, conn, endpoint))
+        return err("extract_chunk_size", NULL);
+
+      tracker->chunk_buffer_str.len = 0;
+      body.data += copy;
+      if (!(body.len -= copy)) // read more
+        return true;
+
+      return handle_chunked(body, conn, endpoint);
+    }
+
+    // reading fresh
+    // could be merged with the previous if, but keeping separate for clarity
+    Cut c = cut_str(body, CRLF);
+    if (!c.found && body.len + CRLF.len > MAX_CHUNKED_HEAD)
+    {
+      conn->status = client ? 501 : 500;
+      return err("verify_head_len", "Head of the chunk too long");
+    }
+
+    // copy to buffer, in case continuing to read, or extracting chunk len
+    ptrdiff_t copy = c.found ? c.head.len + CRLF.len : body.len;
+    memcpy(tracker->chunk_buffer + tracker->chunk_buffer_str.len, body.data, copy);
+    tracker->chunk_buffer_str.len += copy;
+
+    if (!c.found) // continue reading chunk header
+      return true;
+
+    if (!extract_chunk_size(tracker->chunk_buffer_str, conn, endpoint))
+      return err("extract_chunk_size", NULL);
+
+    tracker->chunk_buffer_str.len = 0;
+    body.data += copy;
+    if (!(body.len -= copy)) // read more from endpoint
+      return true;
+
+    return handle_chunked(body, conn, endpoint);
+  }
+
+  else if (tracker->state == CHUNK)
+  {
+    if (body.len < tracker->chunk_len - tracker->bytes_read)
+    { // increment bytes_read and read more
+      tracker->bytes_read += body.len;
+      return true;
+    }
+
+    // no need to update bytes_read, causing moving on to next state
+    tracker->state = TAIL_CRLF;
+    body.data += tracker->chunk_len - tracker->bytes_read;
+    if (!(body.len -= tracker->chunk_len - tracker->bytes_read)) // read more from endpoint
+      return true;
+
+    return handle_chunked(body, conn, endpoint);
+  }
+
+  else if (tracker->state == TAIL_CRLF)
+  { // limitation: does not handle trailers in tail crlf
+    assert(tracker->chunk_buffer_str.len <= 1);
+    if (tracker->chunk_buffer_str.len == 1)
+    {
+      assert(*tracker->chunk_buffer_str.data == '\r');
+      if (*body.data != '\n')
+      {
+        conn->status = client ? 400 : 500;
+        return err("verify_tail_crlf", "Malformed CRLF");
+      }
+
+      if (!tracker->chunk_len && !tracker->bytes_read)
+      { // done
+        tracker->empty_found = true;
+        if (body.len > 1) // next request to read
+          endpoint->next_index = ++body.data - endpoint->buffer;
+        return true;
+      }
+
+      tracker->chunk_buffer_str.len = 0;
+      tracker->state = HEAD_CRLF;
+      body.data++;
+      if (!--body.len) // read more from endpoint
+        return true;
+
+      return handle_chunked(body, conn, endpoint);
+    }
+
+    if (*body.data != '\r')
+    {
+      conn->status = client ? 400 : 500;
+      return err("verify_tail_crlf", "Malformed CRLF");
+    }
+
+    if (body.len == 1)
+    { // only read \r
+      *tracker->chunk_buffer_str.data = '\r';
+      tracker->chunk_buffer_str.len = 1;
+      return true;
+    }
+
+    if (body.data[1] != '\n')
+    {
+      conn->status = client ? 400 : 500;
+      return err("verify_tail_crlf", "Malformed CRLF");
+    }
+
+    if (!tracker->chunk_len && !tracker->bytes_read)
+    { // done
+      tracker->empty_found = true;
+      if (body.len > 1) // next request to read
+        endpoint->next_index = body.data + CRLF.len - endpoint->buffer;
+      return true;
+    }
+
+    reset_chunk_tracker(tracker);
+
+    body.data += CRLF.len;
+    if (!(body.len -= CRLF.len)) // read more from endpoint
+      return true;
+
+    return handle_chunked(body, conn, endpoint);
+  }
+
+  assert(false);
+  return false;
+}
+
 void reset_chunk_tracker(ChunkTracker *tracker)
 {
   assert(tracker);
 
+  tracker->state = HEAD_CRLF;
   tracker->chunk_buffer_str.data = tracker->chunk_buffer;
   tracker->chunk_buffer_str.len = 0;
   tracker->chunk_len = 0;
@@ -328,24 +512,41 @@ void reset_chunk_tracker(ChunkTracker *tracker)
   tracker->empty_found = false;
 }
 
-// limitation: does not support chunk extensions
-bool check_empty_chunk(Str body, ChunkTracker *tracker, size_t *extra)
+bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint)
 {
-  assert(tracker);
-  assert(extra);
-  assert(!tracker->empty_found);
+  assert(conn && endpoint);
+  assert(head.len);
 
-  if (!body.len)
-    return false;
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+  assert(client || upstream);
 
-  Cut c = {0};
+  ChunkTracker *tracker = &endpoint->chunk_tracker;
+  assert(tracker->state == HEAD_CRLF);
 
-  if (!tracker->chunk_len && !tracker->bytes_read)
-  { // starting fresh
-    c = cut_str(body, CRLF);
+  ptrdiff_t len = -1;
+  assert((len = contains(head, STR("\r\n"))) != -1);
+  head.len = len;
+
+  if (contains(head, STR(";")) != -1)
+  {
+    conn->status = client ? 501 : 500;
+    return err("contains", "Extensions detected in chunk head");
   }
+
+  long size = -1;
+  if (!str_to_long_hex(head, &size))
+  {
+    conn->status = client ? 400 : 500;
+    return err("str_to_long_hex", NULL);
+  }
+
+  // ready to read chunk
+  tracker->chunk_len = (size_t)size;
+  tracker->bytes_read = 0;
+  tracker->state = CHUNK;
+
   return true;
-}
+};
 
 char *get_status_string(uint status)
 {

@@ -8,10 +8,9 @@ typedef struct endpoint Endpoint;
 
 typedef enum chunked_state
 {            // what part of a chunk are we reading
-  START,     // read first chunk
-  SIZE_CRLF, // hex encoded size
+  HEAD_CRLF, // hex encoded size
   CHUNK,     // actual chunk bytes
-  END_CRLF   // ending delimiter
+  TAIL_CRLF  // ending delimiter
 } ChunkedState;
 
 typedef struct chunk_tracker
@@ -50,11 +49,15 @@ bool verify_headers(Connection *conn, Endpoint *endpoint);
 // only to be used once per request, right after parsing verifying headers
 bool check_body(Connection *conn, Endpoint *endpoint);
 
-void reset_chunk_tracker(ChunkTracker *tracker);
-
 // returns false on error, sets emtpy_found in tracker to indicate that the body is compelete
 // extra is set to be used for next index
-bool check_empty_chunk(Str body, ChunkTracker *tracker, size_t *extra);
+bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint);
+
+void reset_chunk_tracker(ChunkTracker *tracker);
+
+// sets chunk_len in tracker
+// makes tracker ready for reading the chunk
+bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint);
 
 char *get_status_string(uint status);
 
