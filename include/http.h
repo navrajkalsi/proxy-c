@@ -15,8 +15,8 @@ typedef enum chunked_state
 
 typedef struct chunk_tracker
 {
-  char chunk_buffer[CHUNKED_BUFFER_SIZE]; // max len (64 bit int) 16 bytes in hex and 2 for crlf
-  Str chunk_buffer_str;                   // str helper for buffer
+  char chunk_buffer[MAX_CHUNK_HEAD]; // max len (64 bit int) 16 bytes in hex and 2 for crlf
+  Str chunk_buffer_str;              // str helper for buffer
   ChunkedState state;
   size_t chunk_len;
   size_t bytes_read;

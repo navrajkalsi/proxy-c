@@ -278,6 +278,9 @@ bool check_body(Connection *conn, Endpoint *endpoint)
   assert(endpoint->headers_found);
   assert(!endpoint->content_len || !endpoint->chunked);
 
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+  assert(client || upstream);
+
   if (!endpoint->content_len && !endpoint->chunked)
     goto body_complete;
 
@@ -304,13 +307,14 @@ bool check_body(Connection *conn, Endpoint *endpoint)
     Str body = {.data = endpoint->buffer + endpoint->head.len,
                 .len = endpoint->read_index - endpoint->head.len};
 
-    size_t extra = 0;
+    if (!handle_chunked(body, conn, endpoint))
+      return err("handle_chunked", NULL);
 
-    if (!check_empty_chunk(body, &endpoint->chunk_tracker, &extra))
-      NULL;
+    if (endpoint->chunk_tracker.empty_found)
+      goto body_complete;
   }
 
-  return false;
+  return true;
 
 body_complete:
   endpoint->to_read = 0;
@@ -333,7 +337,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     if (tracker->chunk_buffer_str.len &&
         tracker->chunk_buffer[tracker->chunk_buffer_str.len - 1] == '\r')
     { // just missing lf
-      if (tracker->chunk_buffer_str.len >= MAX_CHUNKED_HEAD - 1)
+      if (tracker->chunk_buffer_str.len >= MAX_CHUNK_HEAD - 1)
       {
         conn->status = client ? 501 : 502;
         return err("verify_head_len", "Head of the chunk too long");
@@ -361,7 +365,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     if (tracker->chunk_buffer_str.len)
     { // try to find crlf, if not add to buffer if the size allows
       Cut c = cut_str(body, CRLF);
-      if (!c.found && tracker->chunk_buffer_str.len + body.len + CRLF.len > MAX_CHUNKED_HEAD)
+      if (!c.found && tracker->chunk_buffer_str.len + body.len + CRLF.len > MAX_CHUNK_HEAD)
       {
         conn->status = client ? 501 : 502;
         return err("verify_head_len", "Head of the chunk too long");
@@ -389,7 +393,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     // reading fresh
     // could be merged with the previous if, but keeping separate for clarity
     Cut c = cut_str(body, CRLF);
-    if (!c.found && body.len + CRLF.len > MAX_CHUNKED_HEAD)
+    if (!c.found && body.len + CRLF.len > MAX_CHUNK_HEAD)
     {
       conn->status = client ? 501 : 502;
       return err("verify_head_len", "Head of the chunk too long");

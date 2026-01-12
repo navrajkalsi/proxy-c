@@ -85,8 +85,10 @@ void read_request(Connection *conn)
     {
       assert(!client->content_len);
       assert(!client->chunked);
-      assert(!client->last_chunk.chunk_len);
-      assert(!client->last_chunk.bytes_read);
+      assert(!client->chunk_tracker.chunk_buffer_str.len);
+      assert(!client->chunk_tracker.chunk_len);
+      assert(!client->chunk_tracker.bytes_read);
+      assert(!client->chunk_tracker.empty_found);
       // keep headers intact, reject body
       client->read_index += read_status;
 
@@ -114,7 +116,13 @@ void read_request(Connection *conn)
         goto error;
       }
 
-      if (check_body(conn, client))
+      if (!check_body(conn, client))
+      {
+        err("check_body", NULL);
+        goto error;
+      }
+
+      if (!client->to_read)
         goto connect_upstream;
 
       client->read_index = client->head.len; // discard body
@@ -133,11 +141,23 @@ void read_request(Connection *conn)
 
       if (!client->to_read)
         goto connect_upstream;
+
+      client->read_index = client->head.len;
     }
     else if (client->chunked)
     {
-      if (check_last_chunk(client))
+      Str body = {client->buffer + client->head.len, client->read_index - client->head.len};
+      if (!handle_chunked(body, conn, client))
+      {
+        err("handle_chunked", NULL);
+        goto error;
+      }
+
+      if (client->chunk_tracker.empty_found)
         goto connect_upstream;
+
+      client->read_index = client->head.len;
+      // think about read index
     }
     else
       assert(false); // logic error
