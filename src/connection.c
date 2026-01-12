@@ -230,86 +230,8 @@ void pull_buf(Endpoint *endpoint)
 
 bool find_last_chunk(Endpoint *endpoint)
 {
-  assert(endpoint);
-  assert(endpoint->headers_found);
-
-  // pointer at chars after headers
-  char *start = endpoint->buffer + endpoint->head.len;
-
-  if (!*start) // no body
-    return false;
-
-  // first checking if already reading last chunk from previous call
-  size_t matched = strlen(endpoint->last_chunk_found);
-
-  while (matched && matched < (size_t)LAST_CHUNK.len && *start)
-  { // continue to check for last_chunk
-    if (*start != LAST_CHUNK.data[matched])
-    { // mismatch
-      *endpoint->last_chunk_found = '\0';
-      matched = 0;
-      break;
-    }
-
-    endpoint->last_chunk_found[matched] = LAST_CHUNK.data[matched];
-    endpoint->last_chunk_found[++matched] = '\0';
-
-    start++;
-  }
-
-  if (matched == (size_t)LAST_CHUNK.len)
-  {             // full chunk matched
-    if (*start) // next request
-      endpoint->next_index = start - endpoint->buffer;
-    return true;
-  }
-  else if (matched) // full chunk not matched but ran out of chars
-    return false;   // read more
-
-  // nothing more to compare
-  if (!*start)
-    return false;
-
-  // last chunk not found in the beginning
-  // now searching beyond
-  char *last_chunk = LAST_CHUNK.data;
-  if ((last_chunk = strstr(start, last_chunk)))
-  {                                                                         // last chunk was read
-    ptrdiff_t chunk_end = (last_chunk + LAST_CHUNK.len) - endpoint->buffer; // this is past the \n
-
-    if (endpoint->buffer[chunk_end]) // read the body and another request
-      endpoint->next_index = chunk_end;
-
-    // read the body and nothing more
-    return true;
-  }
-
-  // full last chunk not found, check last bytes in the buffer for worst case:
-  // '0\r\n\r'
-  start = endpoint->buffer + endpoint->head.len;
-  size_t read_size = strlen(start), // num of chars available to check at most
-      to_match = read_size < (size_t)LAST_CHUNK.len - 1 ? read_size : (size_t)LAST_CHUNK.len - 1;
-  ptrdiff_t match_index = (ptrdiff_t)(read_size - to_match);
-  matched = 0;
-
-  // checking if 0 is received, only using last to_match bytes
-  while (start[match_index])
-  {
-    if (start[match_index] != LAST_CHUNK.data[matched])
-    {
-      matched = 0;
-      *endpoint->last_chunk_found = '\0'; // restart
-    }
-    else
-    {
-      endpoint->last_chunk_found[matched] = LAST_CHUNK.data[matched];
-      endpoint->last_chunk_found[++matched] = '\0';
-    }
-
-    match_index++;
-  }
-
-  return false;
+  (void)endpoint;
+  return true;
 }
 
 bool parse_headers(Connection *conn, Endpoint *endpoint)
@@ -488,7 +410,8 @@ void print_endpoint(const Endpoint *endpoint)
   printf("\033[1;33mContent len:\033[0;32m %zu\n", endpoint->content_len);
   printf("\033[1;33mChunked:\033[0;32m %s\n", endpoint->chunked ? "true" : "false");
   printf("\033[1;33mHeaders found:\033[0;32m %s\n", endpoint->headers_found ? "true" : "false");
-  printf("\033[1;33mLast chunk found:\033[0;32m %s\n", endpoint->last_chunk_found);
+  printf("\033[1;33mChunk Tracker buffer:\033[0;32m %.*s\n", (int)endpoint->chunk_tracker.view_len,
+         endpoint->chunk_tracker.buffer);
   puts("\033[1;34mEnd\n\033[0m");
 }
 

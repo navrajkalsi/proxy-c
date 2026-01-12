@@ -332,12 +332,11 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
   ChunkTracker *tracker = &endpoint->chunk_tracker;
 
-  if (tracker->state == HEAD_CRLF)
+  if (tracker->state == (ChunkedState)HEAD_CRLF)
   {
-    if (tracker->chunk_buffer_str.len &&
-        tracker->chunk_buffer[tracker->chunk_buffer_str.len - 1] == '\r')
+    if (tracker->view_len && tracker->buffer[tracker->view_len - 1] == '\r')
     { // just missing lf
-      if (tracker->chunk_buffer_str.len >= MAX_CHUNK_HEAD - 1)
+      if (tracker->view_len >= (ptrdiff_t)MAX_CHUNK_HEAD - 1)
       {
         conn->status = client ? 501 : 502;
         return err("verify_head_len", "Head of the chunk too long");
@@ -349,12 +348,12 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
         return err("verify_head_crlf", "Malformed CRLF");
       }
 
-      tracker->chunk_buffer_str.data[tracker->chunk_buffer_str.len++] = '\n';
+      tracker->buffer[tracker->view_len++] = '\n';
 
-      if (!extract_chunk_size(tracker->chunk_buffer_str, conn, endpoint))
+      if (!extract_chunk_size((Str){tracker->buffer, tracker->view_len}, conn, endpoint))
         return err("extract_chunk_size", NULL);
 
-      tracker->chunk_buffer_str.len = 0;
+      tracker->view_len = 0;
       body.data++;
       if (!--body.len) // read more from endpoint
         return true;
@@ -362,10 +361,10 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
       return handle_chunked(body, conn, endpoint);
     }
 
-    if (tracker->chunk_buffer_str.len)
+    if (tracker->view_len)
     { // try to find crlf, if not add to buffer if the size allows
       Cut c = cut_str(body, CRLF);
-      if (!c.found && tracker->chunk_buffer_str.len + body.len + CRLF.len > MAX_CHUNK_HEAD)
+      if (!c.found && tracker->view_len + body.len + CRLF.len > (ptrdiff_t)MAX_CHUNK_HEAD)
       {
         conn->status = client ? 501 : 502;
         return err("verify_head_len", "Head of the chunk too long");
@@ -373,16 +372,16 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
       // copy to buffer, in case continuing to read, or extracting chunk len
       ptrdiff_t copy = c.found ? c.head.len + CRLF.len : body.len;
-      memcpy(tracker->chunk_buffer + tracker->chunk_buffer_str.len, body.data, copy);
-      tracker->chunk_buffer_str.len += copy;
+      memcpy(tracker->buffer + tracker->view_len, body.data, copy);
+      tracker->view_len += copy;
 
       if (!c.found) // continue reading chunk header
         return true;
 
-      if (!extract_chunk_size(tracker->chunk_buffer_str, conn, endpoint))
+      if (!extract_chunk_size((Str){tracker->buffer, tracker->view_len}, conn, endpoint))
         return err("extract_chunk_size", NULL);
 
-      tracker->chunk_buffer_str.len = 0;
+      tracker->view_len = 0;
       body.data += copy;
       if (!(body.len -= copy)) // read more
         return true;
@@ -393,7 +392,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     // reading fresh
     // could be merged with the previous if, but keeping separate for clarity
     Cut c = cut_str(body, CRLF);
-    if (!c.found && body.len + CRLF.len > MAX_CHUNK_HEAD)
+    if (!c.found && body.len + CRLF.len > (ptrdiff_t)MAX_CHUNK_HEAD)
     {
       conn->status = client ? 501 : 502;
       return err("verify_head_len", "Head of the chunk too long");
@@ -401,16 +400,16 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
     // copy to buffer, in case continuing to read, or extracting chunk len
     ptrdiff_t copy = c.found ? c.head.len + CRLF.len : body.len;
-    memcpy(tracker->chunk_buffer + tracker->chunk_buffer_str.len, body.data, copy);
-    tracker->chunk_buffer_str.len += copy;
+    memcpy(tracker->buffer + tracker->view_len, body.data, copy);
+    tracker->view_len += copy;
 
     if (!c.found) // continue reading chunk header
       return true;
 
-    if (!extract_chunk_size(tracker->chunk_buffer_str, conn, endpoint))
+    if (!extract_chunk_size((Str){tracker->buffer, tracker->view_len}, conn, endpoint))
       return err("extract_chunk_size", NULL);
 
-    tracker->chunk_buffer_str.len = 0;
+    tracker->view_len = 0;
     body.data += copy;
     if (!(body.len -= copy)) // read more from endpoint
       return true;
@@ -418,9 +417,9 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     return handle_chunked(body, conn, endpoint);
   }
 
-  else if (tracker->state == CHUNK)
+  else if (tracker->state == (ChunkedState)CHUNK)
   {
-    if (body.len < tracker->chunk_len - tracker->bytes_read)
+    if ((size_t)body.len < tracker->chunk_len - tracker->bytes_read)
     { // increment bytes_read and read more
       tracker->bytes_read += body.len;
       return true;
@@ -435,12 +434,12 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
     return handle_chunked(body, conn, endpoint);
   }
 
-  else if (tracker->state == TAIL_CRLF)
+  else if (tracker->state == (ChunkedState)TAIL_CRLF)
   { // limitation: does not handle trailers in tail crlf
-    assert(tracker->chunk_buffer_str.len <= 1);
-    if (tracker->chunk_buffer_str.len == 1)
+    assert(tracker->view_len <= 1);
+    if (tracker->view_len == 1)
     {
-      assert(*tracker->chunk_buffer_str.data == '\r');
+      assert(*tracker->buffer == '\r');
       if (*body.data != '\n')
       {
         conn->status = client ? 400 : 502;
@@ -455,7 +454,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
         return true;
       }
 
-      tracker->chunk_buffer_str.len = 0;
+      tracker->view_len = 0;
       tracker->state = HEAD_CRLF;
       body.data++;
       if (!--body.len) // read more from endpoint
@@ -472,8 +471,8 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
     if (body.len == 1)
     { // only read \r
-      *tracker->chunk_buffer_str.data = '\r';
-      tracker->chunk_buffer_str.len = 1;
+      *tracker->buffer = '\r';
+      tracker->view_len = 1;
       return true;
     }
 
@@ -509,8 +508,7 @@ void reset_chunk_tracker(ChunkTracker *tracker)
   assert(tracker);
 
   tracker->state = HEAD_CRLF;
-  tracker->chunk_buffer_str.data = tracker->chunk_buffer;
-  tracker->chunk_buffer_str.len = 0;
+  tracker->view_len = 0;
   tracker->chunk_len = 0;
   tracker->bytes_read = 0;
   tracker->empty_found = false;
@@ -525,7 +523,7 @@ bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint)
   assert(client || upstream);
 
   ChunkTracker *tracker = &endpoint->chunk_tracker;
-  assert(tracker->state == HEAD_CRLF);
+  assert(tracker->state == (ChunkedState)HEAD_CRLF);
 
   ptrdiff_t len = -1;
   assert((len = contains(head, STR("\r\n"))) != -1);
