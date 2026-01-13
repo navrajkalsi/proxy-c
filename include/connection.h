@@ -4,8 +4,6 @@
 #include <sys/socket.h>
 
 #include "http.h"
-#include "main.h"
-#include "str.h"
 
 typedef enum
 {
@@ -56,10 +54,11 @@ typedef struct connection
   struct connection **self_ptr; // this will be an element of active_conns array, used to
                                 // deactive/remove from active_conns(just make this NULL)
   State state;
-  int conn_tfd;  // full conn timeout, also use for keep-alive
-  int state_tfd; // timeout for individual read/write states
-  uint status;   // http status code
-  bool complete; // full response received and sent
+  State timeout_state; // state conn was in right before timing out
+  int conn_tfd;        // full conn timeout, also use for keep-alive
+  int state_tfd;       // timeout for individual read/write states
+  uint status;         // http status code
+  bool complete;       // full response received and sent
   bool keep_alive;
 } Connection;
 
@@ -100,15 +99,6 @@ void del_from_epoll(int fd);
 
 // copies bytes from next_index to starting of buffer till read_index & sets read index accordingly
 void pull_buf(Endpoint *endpoint);
-
-// dynamically checks for last_chunk (fragmented or full) depending on the
-// chars in endpoint.last_chunk_found
-// starts to check from end of headers in client_buffer
-// returns true if chunk is received in full, or false if need to read more
-bool find_last_chunk(Endpoint *endpoint);
-
-// parsing common headers for both client and upstream only call once per request/response
-bool parse_headers(Connection *conn, Endpoint *endpoint);
 
 // used to continue the conn, if keep alive is true
 void check_conn(Connection *conn);

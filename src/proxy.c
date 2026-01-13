@@ -1,12 +1,12 @@
 #include <assert.h>
 #include <netdb.h>
 #include <openssl/ssl.h>
-#include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 
 #include "client.h"
+#include "connection.h"
 #include "proxy.h"
 #include "timer.h"
 #include "upstream.h"
@@ -211,10 +211,13 @@ bool start_proxy(void)
         accept_client();
 
       else if (events & EPOLLIN && tfd_expired(conn->conn_tfd))
-        conn->state = CONN_TIMEDOUT;
+        conn->state = CONN_TIMEDOUT; // do not need timeout_state, straight 408
 
       else if (events & EPOLLIN && tfd_expired(conn->state_tfd))
+      {
+        conn->timeout_state = conn->state;
         conn->state = STATE_TIMEDOUT;
+      }
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
         read_request(conn);                                     // write error is not waited on
@@ -223,12 +226,10 @@ bool start_proxy(void)
         write_request(conn);
 
       else if (conn->state == READ_RESPONSE && events & EPOLLIN) // read from upstream
-        puts("read_response");
-      // read_response(conn);
+        read_response(conn);
 
       else if (conn->state == WRITE_RESPONSE && events & EPOLLOUT) // send to client
-        puts("write_response");
-      // write_response(conn);
+        write_response(conn);
 
       else if (events & EPOLLHUP)
       {
@@ -300,6 +301,7 @@ again:
     disarm_tfd(conn->conn_tfd);
     disarm_tfd(conn->state_tfd);
     handle_error_response(conn);
+    conn->state = CLOSE_CONN;
     goto again;
 
   case CONNECT_UPSTREAM:
@@ -348,10 +350,19 @@ again:
     goto again;
 
   case CONN_TIMEDOUT:
-    break;
+    conn->status = 408;
+    conn->state = WRITE_ERROR;
+    goto again;
 
   case STATE_TIMEDOUT:
-    break;
+    if (conn->timeout_state == READ_REQUEST || conn->timeout_state == WRITE_REQUEST)
+      conn->status = 408;
+    else if (conn->timeout_state == READ_RESPONSE || conn->timeout_state == WRITE_RESPONSE)
+      conn->status = 504;
+    else // only these 4 states should be possible from the main wait loop
+      assert(false);
+    conn->state = WRITE_ERROR;
+    goto again;
 
   case CLOSE_CONN:
     if (*client_fd >= 0)
@@ -370,8 +381,7 @@ again:
     break;
 
   default:
-    err("verify_state", "Unknown state");
-    break;
+    assert(false);
   }
 }
 
@@ -380,4 +390,14 @@ void free_active_conns(void)
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
     if (active_conns[i])
       free_conn(active_conns + i);
+}
+
+void free_config(void)
+{
+  if (config.canonical_host.unparsed.len)
+    free(config.canonical_host.unparsed.data);
+  if (config.upstream_host.unparsed.len)
+    free(config.upstream_host.unparsed.data);
+  if (config.listen_port.len)
+    free(config.listen_port.data);
 }

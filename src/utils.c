@@ -1,14 +1,9 @@
 #include <assert.h>
-#include <errno.h>
 #include <signal.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "connection.h"
 #include "proxy.h"
-#include "str.h"
 #include "utils.h"
 
 bool err(const char *function, const char *error)
@@ -151,7 +146,7 @@ const char *get_state_string(int state)
   case CLOSE_CONN:
     return "close_conn";
   default:
-    return "Unknown state";
+    assert(false);
   }
 }
 

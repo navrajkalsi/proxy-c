@@ -1,7 +1,5 @@
 #include <assert.h>
 #include <netdb.h>
-#include <sched.h>
-#include <stdint.h>
 #include <string.h>
 
 #include "bits.h"
@@ -15,11 +13,9 @@ const Str delimiters[DELIMITERS_LEN] = {STR("://"), STR(":"), STR("/"), STR("?")
 bool parse_url(Str str, URL *url)
 {
   assert(url);
+  assert(str.len);
   url->unparsed = str;
   url->protocol = url->host = url->port = url->path = url->params = url->frags = NULL_STR;
-
-  if (!str.len)
-    return err("verify_len", "Empty input");
 
   uint8_t tracker = 0u, *tracker_p = &tracker;
   int last_found = -1;
@@ -31,11 +27,7 @@ bool parse_url(Str str, URL *url)
     Cut cut = cut_str(next, delimiter);
 
     if (!cut.found)
-    { // if delimiter is found elsewhere, then url is invalid, as they must be in order
-      // if (contains(str, delimiter))
-      //   return err("parse_url_delimiter_check", "Malformed URL");
       continue;
-    }
 
     last_found = i;
 
@@ -77,7 +69,7 @@ bool parse_url(Str str, URL *url)
       break;
 
     default:
-      return err("parse_url_switch", "Logic Error! Unknown delimiter");
+      assert(false);
     }
 
     set_bit(tracker_p, i);
@@ -134,8 +126,8 @@ void extract_host(URL *url, Host *host)
 }
 
 bool validate_protocol(Str protocol)
-{ // already case folded during parsing
-  return equals(protocol, HTTPS) || equals(protocol, HTTP);
+{
+  return case_equals(protocol, HTTPS) || case_equals(protocol, HTTP);
 }
 
 bool validate_host(Str host)

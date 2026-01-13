@@ -1,5 +1,7 @@
-#include "main.h"
+#include <openssl/ssl.h>
+
 #include "args.h"
+#include "main.h"
 #include "proxy.h"
 #include "upstream.h"
 #include "utils.h"
@@ -41,12 +43,11 @@ int main(int argc, char *argv[])
   if (!start_proxy())
     err_n_exit("start_proxy", NULL);
 
-  // free_upstream_addrinfo();
-  // free_active_conns();
-  // free_config(&config);
-  // if (ssl_context)
-  //   SSL_CTX_free(ssl_context);
-  // regfree(&origin_regex);
-  // EVP_cleanup();
-  // return 0;
+  free_upstream_addrinfo();
+  free_active_conns();
+  free_config();
+  if (ssl_context)
+    SSL_CTX_free(ssl_context);
+  EVP_cleanup();
+  return 0;
 }

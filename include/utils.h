@@ -12,7 +12,7 @@ void *err_null(const char *function, const char *error);
 
 void err_n_exit(const char *function, const char *error);
 
-// non fatal logging
+// non critical logging
 bool warn(const char *function, const char *warning);
 
 bool setup_sig_handler(void);

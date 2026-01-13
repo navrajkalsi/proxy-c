@@ -1,48 +1,37 @@
-#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <openssl/ssl.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
 
-#include "connection.h"
 #include "main.h"
 #include "proxy.h"
 #include "upstream.h"
 #include "utils.h"
 
-// global var that stores a linked list of struct addrinfo containing info about
-// upstream server
-struct addrinfo *upstream_addrinfo = NULL;
+// global var that stores a linked list of struct addrinfo containing info about upstream server
+static struct addrinfo *upstream_addrinfo = NULL;
 
 bool setup_upstream(void)
 {
   Str host = config.upstream_host.host, port = config.upstream_host.port;
-  char host_str[host.len + 1], port_str[6];
+  char host_local[host.len + 1], port_local[6];
 
   assert(host.len);
 
   // null terminate host
-  memcpy(host_str, host.data, host.len);
-  host_str[host.len] = '\0';
+  memcpy(host_local, host.data, host.len);
+  host_local[host.len] = '\0';
 
   if (port.len)
   {
-    memcpy(port_str, port.data, port.len);
-    port_str[port.len] = '\0';
+    memcpy(port_local, port.data, port.len);
+    port_local[port.len] = '\0';
   }
   else if (config.upstream_https)
-    memcpy(port_str, "443", 4);
+    memcpy(port_local, "443", 4);
   else
-    memcpy(port_str, "80", 3);
+    memcpy(port_local, "80", 3);
 
   struct addrinfo hints;
   memset(&hints, 0, sizeof hints);
@@ -51,7 +40,7 @@ bool setup_upstream(void)
 
   int status = 0;
   // targetting port based on the protocol of the upstream
-  if ((status = getaddrinfo(host_str, port_str, &hints, &upstream_addrinfo)) != 0)
+  if ((status = getaddrinfo(host_local, port_local, &hints, &upstream_addrinfo)) != 0)
     return err("getaddrinfo", gai_strerror(status));
 
   // getaddrinfo() makes system calls that may sometime set errno, even if getaddrinfo returns 0
@@ -102,31 +91,22 @@ void free_upstream_addrinfo(void)
 
 void read_response(Connection *conn)
 {
-  if (!conn)
-    goto error;
-
+  assert(conn);
   assert(conn->state == READ_RESPONSE);
   assert(!conn->complete);
 
   Endpoint *upstream = &conn->upstream;
 
   // should not have next index, reset by reset_conn()
-  if (upstream->next_index)
-  {
-    err("verify_next_index", "Next index not reset. Logic error!");
-    goto error;
-  }
+  assert(!upstream->next_index);
 
   // after finding the headers
   // must have written the buffer to client in full, before reading again
   if (upstream->headers_found)
-  {
     upstream->read_index = 0;
-    *upstream->buffer = '\0';
-  }
 
   ssize_t read_status = 0;
-  size_t max_read = BUFFER_SIZE - (size_t)upstream->read_index - 1;
+  size_t max_read = BUFFER_SIZE - (size_t)upstream->read_index;
 
   while ((max_read -= (size_t)read_status) &&
          (read_status =
@@ -134,29 +114,58 @@ void read_response(Connection *conn)
                   ? SSL_read(upstream->ssl, upstream->buffer + upstream->read_index, (int)max_read)
                   : read(upstream->fd, upstream->buffer + upstream->read_index, max_read)) > 0)
   {
-    {
-      upstream->read_index += read_status;
-      upstream->buffer[upstream->read_index] = '\0';
-    }
+    upstream->read_index += read_status;
 
     if (!upstream->headers_found)
     {
-      if (!parse_headers(conn, upstream))
+      assert(!upstream->content_len);
+      assert(!upstream->chunked);
+      assert(!upstream->chunk_tracker.view_len);
+      assert(!upstream->chunk_tracker.empty_found);
+
+      Str tmp_head = {.data = upstream->buffer, .len = upstream->read_index};
+      if (!find_empty_line(&tmp_head))
+      {
+        if ((size_t)upstream->read_index == BUFFER_SIZE)
+        { // headers too large
+          err("read_request", "Headers too large");
+          conn->status = 502;
+          goto error;
+        }
+        continue;
+      }
+      upstream->head = tmp_head;
+
+      if (!parse_head(conn, upstream))
+      {
+        err("parse_head", NULL);
         goto error;
+      }
+
+      if (!verify_headers(conn, upstream))
+      {
+        err("verify_headers", NULL);
+        goto error;
+      }
+
+      if (!check_body(conn, upstream))
+      {
+        err("check_body", NULL);
+        goto error;
+      }
 
       // no content len or encoding was specified or full response read
-      if (upstream->headers_found && !upstream->to_read)
+      if (!upstream->to_read)
         goto complete;
     }
     else if (upstream->content_len)
     { // bytes left from content len
-      size_t extra =
-          (size_t)read_status > upstream->to_read ? (size_t)read_status - upstream->to_read : 0;
+      bool extra = upstream->to_read < (size_t)read_status;
 
       if (extra)
       {
+        upstream->next_index = upstream->head.len + (ptrdiff_t)upstream->to_read;
         upstream->to_read = 0;
-        upstream->next_index = upstream->read_index - (ptrdiff_t)extra;
       }
       else
         upstream->to_read -= (size_t)read_status;
@@ -165,15 +174,19 @@ void read_response(Connection *conn)
         goto complete;
     }
     else if (upstream->chunked)
-    { // checking for last chunk, was not received during parse_headers()
-      if (find_last_chunk(upstream))
+    { // checking for last chunk, was not received during parse_head()
+      Str body = {upstream->buffer, upstream->read_index};
+      if (!handle_chunked(body, conn, upstream))
+      {
+        err("handle_chunked", NULL);
+        goto error;
+      }
+
+      if (upstream->chunk_tracker.empty_found)
         goto complete;
     }
     else
-    {
-      err("verify_upstream_read", "No read condition met. Logic error!");
-      goto error;
-    }
+      assert(false);
   }
 
   if (read_status == 0)
@@ -351,9 +364,7 @@ bool write_error_response(Connection *conn)
 
 void write_response(Connection *conn)
 {
-  if (!conn)
-    goto error;
-
+  assert(conn);
   assert(conn->state == WRITE_RESPONSE);
 
   Endpoint *client = &conn->client, *upstream = &conn->upstream;

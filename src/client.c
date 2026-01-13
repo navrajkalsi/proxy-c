@@ -1,25 +1,10 @@
-#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
-#include <netinet/in.h>
 #include <openssl/ssl.h>
-#include <regex.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <time.h>
 #include <unistd.h>
 
 #include "client.h"
-#include "connection.h"
-#include "http.h"
 #include "proxy.h"
-#include "str.h"
 #include "utils.h"
 
 void accept_client(void)
@@ -90,16 +75,17 @@ void read_request(Connection *conn)
       // keep headers intact, reject body
       client->read_index += read_status;
 
-      if ((size_t)client->read_index == BUFFER_SIZE)
-      { // headers too large
-        err("read_request", "Headers too large");
-        conn->status = 431;
-        goto error;
-      }
-
       Str tmp_head = {.data = client->buffer, .len = client->read_index};
-      if (!find_empty_line(&tmp_head)) // full headers found
+      if (!find_empty_line(&tmp_head))
+      {
+        if ((size_t)client->read_index == BUFFER_SIZE)
+        { // headers too large
+          err("read_request", "Headers too large");
+          conn->status = 431;
+          goto error;
+        }
         continue;
+      }
       client->head = tmp_head;
 
       if (!parse_head(conn, client))

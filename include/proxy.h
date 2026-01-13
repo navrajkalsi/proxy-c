@@ -35,6 +35,8 @@ void handle_state(Connection *conn);
 
 void free_active_conns(void);
 
+void free_config(void);
+
 extern Config config;
 extern SSL_CTX *ssl_context;
 extern bool RUNNING;

@@ -27,8 +27,6 @@ bool parse_url(Str str, URL *url);
 // fills fields of host from url
 void extract_host(URL *url, Host *host);
 
-bool validate_url(const URL *url);
-
 // if the protocol matches http or https (only web protocols)
 bool validate_protocol(Str protocol);
 

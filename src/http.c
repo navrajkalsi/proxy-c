@@ -1,9 +1,5 @@
 #include <arpa/inet.h>
 #include <assert.h>
-#include <netinet/in.h>
-#include <sched.h>
-#include <stdbool.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -11,8 +7,6 @@
 #include "connection.h"
 #include "http.h"
 #include "proxy.h"
-#include "str.h"
-#include "url.h"
 #include "utils.h"
 
 bool find_empty_line(Str *head)
