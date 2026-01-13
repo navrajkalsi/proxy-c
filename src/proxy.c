@@ -187,7 +187,6 @@ bool start_proxy(void)
 
   while (RUNNING)
   {
-    print_active_num();
     if ((ready_events = epoll_wait(EPOLL_FD, epoll_events, MAX_EVENTS, -1)) == -1)
     {
       if (errno == EINTR && !RUNNING) // running set to false by sig_handler
@@ -268,7 +267,7 @@ again:
   if (!RUNNING) // if sigint during loop
     return;
 
-  log_state(conn->state);
+  // log_state(conn->state);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
   {
