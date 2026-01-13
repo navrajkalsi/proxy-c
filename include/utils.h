@@ -38,3 +38,5 @@ void log_state(int state);
 bool str_to_long(Str str, long *num);
 
 bool str_to_long_hex(Str str, long *num);
+
+bool set_date_str(Str date);

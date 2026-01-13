@@ -1,4 +1,5 @@
 #define VERSION "2.0"
+#define SERVER "Proxy-C/" VERSION " (Unix)"
 
 #define STR(chars)                                                                                 \
   (Str)                                                                                            \
@@ -16,6 +17,7 @@
 #define CRLF STR("\r\n")
 #define LAST_CHUNK STR("0\r\n\r\n")
 #define TRAILER STR("\r\n\r\n")
+#define SPACE STR(" ")
 
 #ifndef DEFAULT_LISTEN_PORT
 #define DEFAULT_LISTEN_PORT "1419"
@@ -26,10 +28,12 @@
 #ifndef DEFAULT_UPSTREAM_HOST
 #define DEFAULT_UPSTREAM_HOST DEFAULT_CANONICAL_HOST
 #endif
+#define DEFAULT_HTTP_VER "HTTP/1.1"
 
 #define BUFFER_SIZE (size_t)8192
 #define MAX_CHUNK_HEAD (size_t)18
 #define MB (size_t)1048576
+#define DATE_LEN 30 // date + a null teminator
 #define READ_FLAGS (int)(EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define WRITE_FLAGS (int)(EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define ERROR_FLAGS (int)(EPOLLHUP | EPOLLRDHUP | EPOLLERR)

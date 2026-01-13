@@ -9,6 +9,7 @@
 #include <sys/timerfd.h>
 #include <unistd.h>
 
+#include "connection.h"
 #include "timer.h"
 #include "utils.h"
 
@@ -54,6 +55,14 @@ void arm_state_tfd(int state_tfd, State state, time_t sec)
   default:
     assert(false); // logic error
   }
+}
+
+void disarm_tfd(int timer_fd)
+{
+  struct itimerspec spec = {.it_interval = {0, 0}, .it_value = {0, 0}};
+
+  if (timerfd_settime(timer_fd, 0, &spec, NULL) == -1)
+    err_n_exit("timerfd_settime", strerror(errno));
 }
 
 bool tfd_expired(int timer_fd)

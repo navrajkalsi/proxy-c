@@ -27,5 +27,8 @@ void arm_conn_tfd(int conn_tfd, time_t sec);
 // if sec is 0, timeout is determined from defaults array
 void arm_state_tfd(int state_tfd, State state, time_t sec);
 
+// only disarms, does not close the fd
+void disarm_tfd(int timer_fd);
+
 // check if the timer expired
 bool tfd_expired(int timer_fd);

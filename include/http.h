@@ -61,6 +61,8 @@ void reset_chunk_tracker(ChunkTracker *tracker);
 // makes tracker ready for reading the chunk
 bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint);
 
+void print_request(const Connection *conn);
+
 char *get_status_string(uint status);
 
 Str get_status_str(uint status);

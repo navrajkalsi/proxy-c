@@ -213,3 +213,15 @@ bool str_to_long_hex(Str str, long *num)
 
   return true;
 }
+
+bool set_date_str(Str date)
+{
+  assert(date.len == DATE_LEN);
+
+  time_t now = time(NULL);
+  struct tm tm;
+  gmtime_r(&now, &tm);
+
+  // strftime returns 0 if write buffer is small
+  return (bool)strftime(date.data, (size_t)DATE_LEN, "%a, %d %b %Y %H:%M:%S GMT", &tm);
+}

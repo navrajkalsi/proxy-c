@@ -108,6 +108,8 @@ void read_request(Connection *conn)
         goto error;
       }
 
+      print_request(conn);
+
       if (!verify_headers(conn, client))
       {
         err("verify_headers", NULL);
@@ -192,9 +194,7 @@ connect_upstream:
 
 void write_request(Connection *conn)
 {
-  if (!conn)
-    goto error;
-
+  assert(conn);
   assert(conn->state == WRITE_REQUEST);
 
   Endpoint *client = &conn->client, *upstream = &conn->upstream;

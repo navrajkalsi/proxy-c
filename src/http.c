@@ -1,4 +1,6 @@
+#include <arpa/inet.h>
 #include <assert.h>
+#include <netinet/in.h>
 #include <sched.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -67,7 +69,7 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
     }
 
     Cut pair = cut_char(cut.head, ':');
-    if (!pair.found || starts_with_lws(&cut.head))
+    if (!pair.found || starts_with_lws(cut.head))
     { // bad header
       conn->status = client ? 400 : 502;
       return err("check_lws", "Malformed header");
@@ -549,6 +551,30 @@ bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint)
 
   return true;
 };
+
+void print_request(const Connection *conn)
+{
+  assert(conn);
+  const Endpoint *client = &conn->client;
+  assert(client && client->headers_found && client->head.len);
+
+  char ip_str[INET6_ADDRSTRLEN];
+  if (!inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)&conn->client_addr)->sin6_addr), ip_str,
+                 sizeof ip_str))
+    err("inet_ntop", strerror(errno));
+  else
+    printf("\n(%s) ", ip_str);
+
+  for (ptrdiff_t i = 0;
+       i < client->head.len && client->head.data[i] != '\r' && client->head.data[i] != '\n'; i++)
+    putchar(client->head.data[i]);
+
+  putchar(' ');
+
+  // host
+  put_str(client->headers.host);
+  putchar('\n');
+}
 
 char *get_status_string(uint status)
 {

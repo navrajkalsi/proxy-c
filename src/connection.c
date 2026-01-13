@@ -53,12 +53,6 @@ Connection *init_conn(void)
 
   reset_conn(conn);
 
-  for (ptrdiff_t i = 0; i < (ptrdiff_t)BUFFER_SIZE; i++)
-  {
-    client->buffer[i] = 'x';
-    upstream->buffer[i] = 'x';
-  }
-
   return conn;
 }
 
@@ -381,14 +375,12 @@ disregard_body:
 
 void check_conn(Connection *conn)
 {
-  if (!conn)
-    return;
-
+  assert(conn);
   assert(conn->state == CHECK_CONN);
   assert(conn->complete);
 
   if (conn->keep_alive)
-    reset_conn(conn); // start to read again from client
+    reset_conn(conn); // start to read again from client (no need to tls again)
   else
     conn->state = CLOSE_CONN;
 }

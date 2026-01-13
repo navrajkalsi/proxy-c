@@ -5,10 +5,9 @@
 #include "main.h"
 #include "str.h"
 
-void put_str(const Str *str)
+void put_str(Str str)
 {
-  if (str)
-    printf("%.*s\n", (int)str->len, str->data);
+  printf("%.*s\n", (int)str.len, str.data);
 }
 
 Str get_head(Str str, ptrdiff_t upto)
@@ -131,9 +130,7 @@ Str *trim_lws(Str *str)
   return str;
 };
 
-bool starts_with_lws(Str *str)
+bool starts_with_lws(Str str)
 {
-  assert(str);
-
-  return str->len && lws(str->data[0]);
+  return str.len && lws(str.data[0]);
 }

@@ -9,6 +9,7 @@
 #include "client.h"
 #include "proxy.h"
 #include "timer.h"
+#include "upstream.h"
 #include "utils.h"
 
 bool setup_tls(void)
@@ -216,15 +217,10 @@ bool start_proxy(void)
         conn->state = STATE_TIMEDOUT;
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
-        read_request(conn);
-
-      else if (conn->state == WRITE_ERROR && events & EPOLLOUT) // write error without upstream
-        puts("handle_error_response");
-      // handle_error_response(conn);
+        read_request(conn);                                     // write error is not waited on
 
       else if (conn->state == WRITE_REQUEST && events & EPOLLOUT) // send to upstream
-        puts("write_request");
-      // write_request(conn);
+        write_request(conn);
 
       else if (conn->state == READ_RESPONSE && events & EPOLLIN) // read from upstream
         puts("read_response");
@@ -268,6 +264,9 @@ void handle_state(Connection *conn)
   int *client_fd = &conn->client.fd, *upstream_fd = &conn->upstream.fd;
 
 again:
+  if (!RUNNING) // if sigint during loop
+    return;
+
   log_state(conn->state);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
@@ -283,13 +282,13 @@ again:
       conn->state = READ_REQUEST;
     }
     else
-    { // for client error cannot send any response, just close
-      close(*client_fd);
+    {                    // for client error cannot send any response, just close
+      close(*client_fd); // closing here as close_conn will want to delete this from epoll
       *client_fd = -1;
       err("setup_endpoint_tls", NULL);
       conn->state = CLOSE_CONN;
     }
-    goto again;
+    goto again; // again to arm tfd even if no error
 
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);
@@ -297,21 +296,20 @@ again:
     break;
 
   case WRITE_ERROR:
-    // fire and forget
-    // remove_timeout(&conn->conn_timeout);
-    // remove_timeout(&conn->state_timeout);
-    // mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
-    // do not add timeout here to prevent creating a loop
-    break;
+    // fire and forget for error message, no need to wait for EPOLL_OUT or timeout
+    disarm_tfd(conn->conn_tfd);
+    disarm_tfd(conn->state_tfd);
+    handle_error_response(conn);
+    goto again;
 
   case CONNECT_UPSTREAM:
-    // if (connect_upstream(upstream_fd))
-    //   conn->state = TLS_UPSTREAM;
-    // else
-    // {
-    //   conn->status = 500;
-    //   conn->state = WRITE_ERROR;
-    // }
+    if (connect_upstream(upstream_fd))
+      conn->state = TLS_UPSTREAM;
+    else
+    {
+      conn->status = 500;
+      conn->state = WRITE_ERROR;
+    }
     goto again;
 
   case TLS_UPSTREAM:
@@ -321,12 +319,14 @@ again:
       conn->state = WRITE_REQUEST;
     }
     else
-    { // for upstream error, send error response to client
+    {                      // for upstream error, send error response to client
+      close(*upstream_fd); // closing here as close_conn will want to delete this from epoll
+      *upstream_fd = -1;
       err("setup_endpoint_tls", NULL);
       conn->status = 500;
       conn->state = WRITE_ERROR;
     }
-    break;
+    goto again;
 
   case WRITE_REQUEST:
     mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
@@ -339,7 +339,7 @@ again:
     break;
 
   case WRITE_RESPONSE:
-    mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
     arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 

@@ -17,7 +17,7 @@ typedef struct cut
   bool found;
 } Cut;
 
-void put_str(const Str *str);
+void put_str(Str str);
 
 // not including char at upto
 Str get_head(Str str, ptrdiff_t upto);
@@ -50,4 +50,4 @@ Str *trim_cr(Str *str);
 Str *trim_lws(Str *str);
 
 // linear white space check
-bool starts_with_lws(Str *str);
+bool starts_with_lws(Str str);
