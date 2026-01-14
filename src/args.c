@@ -28,7 +28,7 @@ void parse_args(int argc, char *argv[])
       if (!parse_url(str, &url)) // no need to free, program will free at exit
         err_n_exit("parse_url", NULL);
 
-      if (url.protocol.len || url.params.len || url.frags.len)
+      if (url.protocol.len || url.path.len || url.params.len || url.frags.len)
         err_n_exit("verify_url", "Canonical Host should only contain host and port(optional)");
 
       extract_host(&url, &config.canonical_host);
@@ -60,7 +60,7 @@ void parse_args(int argc, char *argv[])
       if (!parse_url(str, &url))
         err_n_exit("parse_url", NULL);
 
-      if (url.protocol.len || url.params.len || url.frags.len)
+      if (url.protocol.len || url.path.len || url.params.len || url.frags.len)
         err_n_exit("verify_url", "Upstream Host should only contain host and port(optional)");
 
       extract_host(&url, &config.upstream_host);
@@ -99,7 +99,7 @@ void parse_args(int argc, char *argv[])
     if (!parse_url(str, &url))
       err_n_exit("parse_url", NULL);
 
-    if (url.protocol.len || url.params.len || url.frags.len)
+    if (url.protocol.len || url.path.len || url.params.len || url.frags.len)
       err_n_exit("verify_url",
                  "Default Canonical Host should only contain host and port number(optional)");
 
@@ -113,7 +113,7 @@ void parse_args(int argc, char *argv[])
     if (!parse_url(str, &url))
       err_n_exit("parse_url", NULL);
 
-    if (url.protocol.len || url.params.len || url.frags.len)
+    if (url.protocol.len || url.path.len || url.params.len || url.frags.len)
       err_n_exit("verify_url",
                  "Default Upstream Host should only contain host and port number(optional)");
 

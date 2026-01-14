@@ -194,9 +194,6 @@ bool start_proxy(void)
 
       return err("epoll_wait", strerror(errno));
     }
-
-    printf("num of events: %d\n", ready_events);
-
     // all subsequent calls should be NON BLOCKING to make epoll make sense
     // all sockets should be set to not block
     // now checking each event and handling it on basis of event specified

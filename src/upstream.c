@@ -264,9 +264,9 @@ bool generate_error_response(Connection *conn)
   date.len--; // discard the null terminator at the end
 
   Str err_str = get_status_str(conn->status),
-      response_body[] = {STR("<html><head><title>"), err_str,
-                         STR("</title></head><body><center><h1>"), err_str,
-                         STR("</h1></center><hr><center>" SERVER "</center></body></html>")};
+      response_body[] = {STR("<html>\n<head><title>"), err_str,
+                         STR("</title></head>\n<body>\n<center><h1>"), err_str,
+                         STR("</h1></center>\n<hr><center>" SERVER "</center>\n</body>\n</html>")};
 
   size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
 

@@ -89,8 +89,13 @@ bool parse_url(Str str, URL *url)
     url->host = str;
   else
   {
-    if (!next.len && last_found != SLASH) // last section empty, only path can be empty
-      return err("parse_url_verify", "Empty section detected in the URL");
+    if (!next.len)
+    {
+      if (last_found == SLASH) // remove trailing slash
+        url->unparsed.len--;
+      else // last section empty, only path can be empty
+        return err("parse_url_verify", "Empty section detected in the URL");
+    }
 
     // assign last section
     switch (last_found)
