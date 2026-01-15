@@ -205,8 +205,6 @@ bool start_proxy(void)
       assert(conn);
 
     again:
-      log_state(conn->state);
-
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
@@ -278,7 +276,7 @@ again:
   if (!RUNNING) // if sigint during loop
     return;
 
-  // log_state(conn->state);
+  log_state(conn->state);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
   {
@@ -364,7 +362,6 @@ again:
     goto again;
 
   case CLOSE_CONN:
-    puts("here");
     if (*client_fd >= 0)
     {
       del_from_epoll(*client_fd);

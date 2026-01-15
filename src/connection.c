@@ -294,10 +294,8 @@ void handle_tls(Connection *conn, Endpoint *endpoint)
   {
     if (errno == EAGAIN || errno == EWOULDBLOCK) // should not block as reading right after epollin
       NULL;
-
     if (errno == EINTR && !RUNNING) // shutdown
       return;
-
     err("recv", strerror(errno));
     goto error;
   }
@@ -327,13 +325,11 @@ void handle_tls(Connection *conn, Endpoint *endpoint)
       err("client_tls", "Client TLS not setup, but received an encrypted request");
       goto error;
     }
-
     if (upstream && !config.upstream_https)
     {
       err("upstream_tls", "Upstream TLS not setup, but received an encrypted response");
       goto error;
     }
-
     if (!setup_endpoint_tls(endpoint))
     {
       err("setup_endpoint_tls", NULL);

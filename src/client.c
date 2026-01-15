@@ -56,8 +56,6 @@ void read_request(Connection *conn)
 
   Endpoint *client = &conn->client;
 
-  assert(false);
-
   // should not have next index, reset by reset_conn()
   assert(!client->next_index);
 
@@ -65,6 +63,8 @@ void read_request(Connection *conn)
   size_t max_read = BUFFER_SIZE - (size_t)client->read_index;
 
   // new request should always start from the beginning of the buffer
+  // client ssl is setup if config.client_https is enabled and the request was detected to be
+  // encrypted
   while (
       (max_read -= (size_t)read_status) &&
       (read_status = client->ssl
@@ -150,19 +150,33 @@ void read_request(Connection *conn)
       client->read_index = client->head.len;
   }
 
+  if (read_status <= 0 && client->ssl)
+  {
+    int ssl_error = SSL_get_error(client->ssl, read_status);
+    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+      return;
+    else
+    {
+      if (ssl_error == SSL_ERROR_ZERO_RETURN)
+        warn("SSL_read", "Client EOF received");
+      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+      return;
+    }
+  }
+
   if (read_status == 0)
-  { // client disconnect
+  { // client disconnect for read()
     conn->state = CLOSE_CONN;
     warn("read", "Client EOF received");
     return;
   }
 
-  if (read_status < 0)
-  {
-    if (errno == EINTR && !RUNNING) // shutdown
-      NULL;
-    else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
-      NULL;
+  if (read_status == -1)
+  { // read() errors
+    if (errno == EINTR && !RUNNING)
+      return;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK)
+      return;
     else
     {
       err("read", strerror(errno));
@@ -202,18 +216,32 @@ void write_request(Connection *conn)
                                      client->to_write)) > 0)
     client->write_index += write_status;
 
+  if (write_status <= 0 && upstream->ssl)
+  {
+    int ssl_error = SSL_get_error(upstream->ssl, write_status);
+    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+      return;
+    else
+    {
+      if (ssl_error == SSL_ERROR_ZERO_RETURN)
+        err("SSL_write", "No write status");
+      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+      return;
+    }
+  }
+
   if (!write_status)
   {
     err("write", "No write status");
     goto error;
   }
 
-  if (write_status < 0)
+  if (write_status == -1)
   {
     if (errno == EINTR && !RUNNING) // shutdown
-      NULL;
+      return;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
-      NULL;
+      return;
     else
     {
       err("write", strerror(errno));

@@ -189,6 +189,20 @@ void read_response(Connection *conn)
       assert(false);
   }
 
+  if (read_status <= 0 && upstream->ssl)
+  {
+    int ssl_error = SSL_get_error(upstream->ssl, read_status);
+    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+      return;
+    else
+    {
+      if (ssl_error == SSL_ERROR_ZERO_RETURN)
+        warn("SSL_read", "Upstream EOF received");
+      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+      return;
+    }
+  }
+
   if (read_status == 0)
   { // upstream disconnect
     conn->state = CLOSE_CONN;
@@ -196,24 +210,24 @@ void read_response(Connection *conn)
     return;
   }
 
-  // write whats in buffer, only if headers are found
-  // this is because parse_headers() requires all the headers to be present in one continuous memory
-  // else continue to read more
-  if (upstream->headers_found)
-    conn->state = WRITE_RESPONSE;
-
   if (read_status == -1)
   {
     if (errno == EINTR && !RUNNING) // shutdown
-      NULL;
+      return;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // no more data right now
-      NULL;
+      return;
     else
     {
       err("read", strerror(errno));
       goto error;
     }
   }
+
+  // write whats in buffer, only if headers are found
+  // this is because parse_headers() requires all the headers to be present in one continuous memory
+  // else continue to read more
+  if (upstream->headers_found)
+    conn->state = WRITE_RESPONSE;
 
   return;
 
@@ -346,15 +360,29 @@ bool write_error_response(Connection *conn)
                                      upstream->to_write)) > 0)
     upstream->write_index += write_status;
 
+  if (write_status <= 0 && client->ssl)
+  {
+    int ssl_error = SSL_get_error(client->ssl, write_status);
+    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+      return true;
+    else
+    {
+      if (ssl_error == SSL_ERROR_ZERO_RETURN)
+        err("SSL_write", "No write status");
+      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+      return false;
+    }
+  }
+
   if (!write_status)
     return err("write", "No write status");
 
   if (write_status == -1)
   {
     if (errno == EINTR && !RUNNING) // shutdown
-      NULL;
+      return true;
     else if (errno == EAGAIN || errno == EWOULDBLOCK) // cannot write now
-      NULL;
+      return true;
     else
       return err("write", strerror(errno));
   }
@@ -385,6 +413,20 @@ void write_response(Connection *conn)
                              : write(client->fd, upstream->buffer + upstream->write_index,
                                      upstream->to_write)) > 0)
     upstream->write_index += write_status;
+
+  if (write_status <= 0 && client->ssl)
+  {
+    int ssl_error = SSL_get_error(client->ssl, write_status);
+    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+      return;
+    else
+    {
+      if (ssl_error == SSL_ERROR_ZERO_RETURN)
+        err("SSL_write", "No write status");
+      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+      return;
+    }
+  }
 
   if (!write_status)
   {

@@ -34,13 +34,16 @@
 #define MAX_CHUNK_HEAD (size_t)18
 #define MB (size_t)1048576
 #define DATE_LEN 30 // date + a null teminator
+
 #define READ_FLAGS (int)(EPOLLIN | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define WRITE_FLAGS (int)(EPOLLOUT | EPOLLET | EPOLLONESHOT | EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define ERROR_FLAGS (int)(EPOLLHUP | EPOLLRDHUP | EPOLLERR)
 #define TIMER_FLAGS (int)(EPOLLIN | EPOLLET | EPOLLONESHOT)
+
 #define BACKLOG 25
 #define MAX_EVENTS 32
 #define MAX_CONNECTIONS 256
+
 #ifndef DOMAIN_CERT
 #define DOMAIN_CERT "/etc/ssl/domain/domain.cert"
 #endif

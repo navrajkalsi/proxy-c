@@ -79,4 +79,3 @@ uninstall:
 clean:
 	@rm -f $(NAME) $(OBJ)
 	@echo "Removed build files"
-

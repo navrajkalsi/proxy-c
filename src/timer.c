@@ -6,7 +6,7 @@
 #include "utils.h"
 
 // indices corresponding to timer_types enum
-static const time_t timer_defaults[TIMER_TYPES_LEN] = {45, 10, 30, 10, 5};
+static const time_t timer_defaults[TIMER_TYPES_LEN] = {15, 10, 30, 10, 45};
 
 void create_tfd(int *timer_fd)
 {
