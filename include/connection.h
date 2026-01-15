@@ -39,7 +39,6 @@ typedef struct endpoint
   bool chunked;       // transfer encoding
   bool headers_found; // if nothing more is needed to be read from the current request,
                       // stop reading if new request is detected, in case of client
-  bool encrypted;
 } Endpoint;
 
 // struct to be used for adding/modding/deleting to the epoll instance
@@ -113,7 +112,7 @@ void print_endpoint(const Endpoint *endpoint);
 bool setup_endpoint_tls(Endpoint *endpoint);
 
 // checks if the first byte is ascii alphabet or not
-void handle_tls(Connection *conn, Endpoint *endpoint);
+void verify_client_protocol(Connection *conn);
 
 // uses clients buffer to piece together the redirect
 Str get_redirect_location(Connection *conn);

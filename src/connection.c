@@ -35,7 +35,6 @@ Connection *init_conn(void)
 
   client->fd = upstream->fd = -1;
   client->next_index = upstream->next_index = 0;
-  client->encrypted = upstream->encrypted = false;
 
   client->head.data = client->buffer; // initally request points to beginning of the buffer
   upstream->head.data = upstream->buffer;
@@ -279,17 +278,18 @@ bool setup_endpoint_tls(Endpoint *endpoint)
   return true;
 }
 
-void handle_tls(Connection *conn, Endpoint *endpoint)
+void verify_client_protocol(Connection *conn)
 {
-  assert(conn && endpoint);
+  assert(conn);
+  assert(conn->state == TLS_CLIENT);
 
-  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
-  assert((client && conn->state == TLS_CLIENT) || (upstream && conn->state == TLS_UPSTREAM));
+  Endpoint *client = &conn->client;
 
   // peek at first 3 bytes
   char tls_hello[3];
 
-  ssize_t status = recv(endpoint->fd, tls_hello, sizeof tls_hello, MSG_PEEK);
+  ssize_t status = recv(client->fd, tls_hello, sizeof tls_hello, MSG_PEEK);
+  bool tls = true;
 
   if (status == -1)
   {
@@ -310,40 +310,41 @@ void handle_tls(Connection *conn, Endpoint *endpoint)
   }
 
   if (*tls_hello == 0x16 && tls_hello[1] == 0x03 && tls_hello[2] <= 0x03)
-    endpoint->encrypted = true;
+    tls = true;
   else if (*tls_hello >= 'A' && *tls_hello <= 'Z')
-    endpoint->encrypted = false;
+    tls = false;
   else
   {
     err("verify_client_hello", "Malformed Request");
     goto error;
   }
 
-  if (endpoint->encrypted)
+  if (tls)
   {
-    if (client && !config.client_https)
+    if (!config.client_https)
     {
       err("client_tls", "Client TLS not setup, but received an encrypted request");
       goto error;
     }
-    if (upstream && !config.upstream_https)
-    {
-      err("upstream_tls", "Upstream TLS not setup, but received an encrypted response");
-      goto error;
-    }
-    if (!setup_endpoint_tls(endpoint))
+    if (!setup_endpoint_tls(client))
     {
       err("setup_endpoint_tls", NULL);
       goto error;
     }
   }
+  else if (config.client_https)
+  { // plain http, force redirect
+    conn->status = 301;
+    conn->state = WRITE_ERROR;
+    return;
+  }
 
-  conn->state = client ? READ_REQUEST : READ_RESPONSE;
+  conn->state = READ_REQUEST;
   return;
 
 error:
   conn->status = 500;
-  conn->state = client ? CLOSE_CONN : WRITE_ERROR;
+  conn->state = CLOSE_CONN;
 };
 
 Str get_redirect_location(Connection *conn)
@@ -360,7 +361,7 @@ Str get_redirect_location(Connection *conn)
   for (uint i = 0; i < num; i++)
   {
     // only path can cause overflow, but it would have been rejected during parse_request_line
-    assert(ret.len + location[i].len <= BUFFER_SIZE);
+    assert(ret.len + location[i].len <= (ptrdiff_t)BUFFER_SIZE);
     memcpy(ret.data + ret.len, location[i].data, location[i].len);
     ret.len += location[i].len;
   }

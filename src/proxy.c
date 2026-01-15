@@ -219,8 +219,8 @@ bool start_proxy(void)
 
       else if (conn->state == TLS_CLIENT && events & EPOLLIN)
       {
-        handle_tls(conn, &conn->client);
-        if (conn->state == READ_REQUEST || conn->state == READ_RESPONSE)
+        verify_client_protocol(conn);
+        if (conn->state == READ_REQUEST)
           goto again; // the peeked data needs to be drained before handling state
       }
 
