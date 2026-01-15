@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <openssl/ssl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/epoll.h>
 #include <unistd.h>
@@ -203,6 +204,9 @@ bool start_proxy(void)
       Connection *conn = epoll_events[i].data.ptr;
       assert(conn);
 
+    again:
+      log_state(conn->state);
+
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
@@ -213,6 +217,13 @@ bool start_proxy(void)
       {
         conn->timeout_state = conn->state;
         conn->state = STATE_TIMEDOUT;
+      }
+
+      else if (conn->state == TLS_CLIENT && events & EPOLLIN)
+      {
+        handle_tls(conn, &conn->client);
+        if (conn->state == READ_REQUEST || conn->state == READ_RESPONSE)
+          goto again; // the peeked data needs to be drained before handling state
       }
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
@@ -243,7 +254,10 @@ bool start_proxy(void)
         conn->state = CLOSE_CONN;
       }
       else
+      {
         printf("Unexpected state for epoll_wait(): %s\n", get_state_string(conn->state));
+        assert(false);
+      }
 
       handle_state(conn);
     }
@@ -273,23 +287,12 @@ again:
     break;
 
   case TLS_CLIENT:
-    if (!config.client_https || setup_endpoint_tls(&conn->client))
-    {
-      add_to_epoll(conn, *client_fd, READ_FLAGS);
-      conn->state = READ_REQUEST;
-    }
-    else
-    {                    // for client error cannot send any response, just close
-      close(*client_fd); // closing here as close_conn will want to delete this from epoll
-      *client_fd = -1;
-      err("setup_endpoint_tls", NULL);
-      conn->state = CLOSE_CONN;
-    }
-    goto again; // again to arm tfd even if no error
+    err_n_exit("verify_state", "No purpose tls_client in handler loop. Logic error");
+    break;
 
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);
-    arm_state_tfd(conn->state_tfd, conn->state, 0);
+    arm_state_tfd(conn->state_tfd, conn->state, 0); // there is no timeout for tls_endpoint
     break;
 
   case WRITE_ERROR:
@@ -361,6 +364,7 @@ again:
     goto again;
 
   case CLOSE_CONN:
+    puts("here");
     if (*client_fd >= 0)
     {
       del_from_epoll(*client_fd);
@@ -377,6 +381,7 @@ again:
     break;
 
   default:
+    printf("Unexpected state for handle_state(): %s\n", get_state_string(conn->state));
     assert(false);
   }
 }

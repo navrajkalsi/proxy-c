@@ -1,9 +1,12 @@
 #include <assert.h>
 #include <errno.h>
 #include <openssl/ssl.h>
+#include <stdio.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 
 #include "client.h"
+#include "connection.h"
 #include "proxy.h"
 #include "utils.h"
 
@@ -43,7 +46,7 @@ void accept_client(void)
 
     // new conn should start with TLS_CLIENT
     conn->state = TLS_CLIENT;
-    handle_state(conn);
+    add_to_epoll(conn, conn->client.fd, READ_FLAGS);
   }
 }
 
@@ -52,6 +55,8 @@ void read_request(Connection *conn)
   assert(conn && conn->state == READ_REQUEST);
 
   Endpoint *client = &conn->client;
+
+  assert(false);
 
   // should not have next index, reset by reset_conn()
   assert(!client->next_index);
@@ -152,7 +157,7 @@ void read_request(Connection *conn)
     return;
   }
 
-  if (read_status == -1)
+  if (read_status < 0)
   {
     if (errno == EINTR && !RUNNING) // shutdown
       NULL;
@@ -203,7 +208,7 @@ void write_request(Connection *conn)
     goto error;
   }
 
-  if (write_status == -1)
+  if (write_status < 0)
   {
     if (errno == EINTR && !RUNNING) // shutdown
       NULL;

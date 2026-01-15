@@ -1,9 +1,13 @@
+#include <asm-generic/errno-base.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "connection.h"
@@ -30,6 +34,7 @@ Connection *init_conn(void)
 
   client->fd = upstream->fd = -1;
   client->next_index = upstream->next_index = 0;
+  client->encrypted = upstream->encrypted = false;
 
   client->head.data = client->buffer; // initally request points to beginning of the buffer
   upstream->head.data = upstream->buffer;
@@ -272,3 +277,74 @@ bool setup_endpoint_tls(Endpoint *endpoint)
 
   return true;
 }
+
+void handle_tls(Connection *conn, Endpoint *endpoint)
+{
+  assert(conn && endpoint);
+
+  bool client = endpoint == &conn->client, upstream = endpoint == &conn->upstream;
+  assert((client && conn->state == TLS_CLIENT) || (upstream && conn->state == TLS_UPSTREAM));
+
+  // peek at first 3 bytes
+  char tls_hello[3];
+
+  ssize_t status = recv(endpoint->fd, tls_hello, sizeof tls_hello, MSG_PEEK);
+
+  if (status == -1)
+  {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) // should not block as reading right after epollin
+      NULL;
+
+    if (errno == EINTR && !RUNNING) // shutdown
+      return;
+
+    err("recv", strerror(errno));
+    goto error;
+  }
+
+  // should atleast get 3 bytes
+  // cannot epollin again, have to drain the buffer or switch to level triggered
+  if (status < 3)
+  {
+    err("verify_hello_len", "Too few bytes received");
+    goto error;
+  }
+
+  if (*tls_hello == 0x16 && tls_hello[1] == 0x03 && tls_hello[2] <= 0x03)
+    endpoint->encrypted = true;
+  else if (*tls_hello >= 'A' && *tls_hello <= 'Z')
+    endpoint->encrypted = false;
+  else
+  {
+    err("verify_client_hello", "Malformed Request");
+    goto error;
+  }
+
+  if (endpoint->encrypted)
+  {
+    if (client && !config.client_https)
+    {
+      err("client_tls", "Client TLS not setup, but received an encrypted request");
+      goto error;
+    }
+
+    if (upstream && !config.upstream_https)
+    {
+      err("upstream_tls", "Upstream TLS not setup, but received an encrypted response");
+      goto error;
+    }
+
+    if (!setup_endpoint_tls(endpoint))
+    {
+      err("setup_endpoint_tls", NULL);
+      goto error;
+    }
+  }
+
+  conn->state = client ? READ_REQUEST : READ_RESPONSE;
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = client ? CLOSE_CONN : WRITE_ERROR;
+};
