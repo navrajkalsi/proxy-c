@@ -163,8 +163,8 @@ void print_args(unsigned int args_parsed)
          (int)config.canonical_host.unparsed.len, config.canonical_host.unparsed.data,
          (int)config.upstream_host.unparsed.len, config.upstream_host.unparsed.data,
          (int)config.listen_port.len, config.listen_port.data,
-         config.client_https ? "HTTPS" : "HTTP", config.upstream_https ? "HTTPS" : "HTTP",
-         config.log_warnings ? "true" : "false");
+         config.client_https ? "HTTPS (HTTP will be upgraded)" : "HTTP (HTTPS will be rejected)",
+         config.upstream_https ? "HTTPS" : "HTTP", config.log_warnings ? "true" : "false");
 
   config.accept_all
       ? puts("Proxy Accepting Incoming Connections from " BOLD "all IPs.\n" RESET)

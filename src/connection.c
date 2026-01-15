@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
@@ -344,3 +345,25 @@ error:
   conn->status = 500;
   conn->state = client ? CLOSE_CONN : WRITE_ERROR;
 };
+
+Str get_redirect_location(Connection *conn)
+{ // client buffer's data would be useless at this point
+  assert(conn);
+  assert(conn->path.len &&
+         *conn->path.data == '/'); // other forms were rejected during parse_request_line
+
+  Str location[] = {config.client_https ? HTTPS : HTTP, STR("://"), config.canonical_host.unparsed,
+                    conn->path}, // path must be in origin form(begins with /)
+      ret = {.data = conn->client.buffer, .len = 0};
+  uint num = sizeof location / sizeof(Str);
+
+  for (uint i = 0; i < num; i++)
+  {
+    // only path can cause overflow, but it would have been rejected during parse_request_line
+    assert(ret.len + location[i].len <= BUFFER_SIZE);
+    memcpy(ret.data + ret.len, location[i].data, location[i].len);
+    ret.len += location[i].len;
+  }
+
+  return ret;
+}

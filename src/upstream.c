@@ -4,6 +4,7 @@
 #include <openssl/ssl.h>
 #include <unistd.h>
 
+#include "connection.h"
 #include "main.h"
 #include "proxy.h"
 #include "upstream.h"
@@ -300,7 +301,7 @@ bool generate_error_response(Connection *conn)
   assert(*content_len_data); // must work, if num is > 0, which it is
 
   Str content_length = {.data = content_len_data, .len = num_of_digits},
-      location = config.canonical_host.unparsed,
+      location = get_redirect_location(conn),
       response_headers[] = {STR(DEFAULT_HTTP_VER),
                             SPACE,
                             err_str,

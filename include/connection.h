@@ -114,3 +114,6 @@ bool setup_endpoint_tls(Endpoint *endpoint);
 
 // checks if the first byte is ascii alphabet or not
 void handle_tls(Connection *conn, Endpoint *endpoint);
+
+// uses clients buffer to piece together the redirect
+Str get_redirect_location(Connection *conn);
