@@ -33,6 +33,7 @@ bool start_proxy(void);
 // mods state of the connection
 void handle_state(Connection *conn);
 
+// also frees the proxy conn
 void free_active_conns(void);
 
 void free_config(void);
@@ -42,3 +43,4 @@ extern SSL_CTX *ssl_context;
 extern bool RUNNING;
 extern int EPOLL_FD;
 extern int PROXY_FD;
+extern Connection *PROXY_CONN;

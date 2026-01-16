@@ -9,7 +9,7 @@ void set_bit(uint8_t *word, uint8_t place)
 
 void clear_bit(uint8_t *word, uint8_t place)
 {
-  *word = *word & ~(1u << place);
+  *word = (uint8_t)(*word & ~(1u << place));
 }
 
 void toggle_bit(uint8_t *word, uint8_t place)

@@ -21,12 +21,12 @@ bool setup_upstream(void)
   assert(host.len);
 
   // null terminate host
-  memcpy(host_local, host.data, host.len);
+  memcpy(host_local, host.data, (size_t)host.len);
   host_local[host.len] = '\0';
 
   if (port.len)
   {
-    memcpy(port_local, port.data, port.len);
+    memcpy(port_local, port.data, (size_t)port.len);
     port_local[port.len] = '\0';
   }
   else if (config.upstream_https)
@@ -192,7 +192,7 @@ void read_response(Connection *conn)
 
   if (read_status <= 0 && upstream->ssl)
   {
-    int ssl_error = SSL_get_error(upstream->ssl, read_status);
+    int ssl_error = SSL_get_error(upstream->ssl, (int)read_status);
     if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
       return;
     else
@@ -363,7 +363,7 @@ bool write_error_response(Connection *conn)
 
   if (write_status <= 0 && client->ssl)
   {
-    int ssl_error = SSL_get_error(client->ssl, write_status);
+    int ssl_error = SSL_get_error(client->ssl, (int)write_status);
     if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
       return true;
     else
@@ -417,7 +417,7 @@ void write_response(Connection *conn)
 
   if (write_status <= 0 && client->ssl)
   {
-    int ssl_error = SSL_get_error(client->ssl, write_status);
+    int ssl_error = SSL_get_error(client->ssl, (int)write_status);
     if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
       return;
     else

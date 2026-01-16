@@ -32,6 +32,7 @@
 
 #define BUFFER_SIZE (size_t)8192
 #define MAX_CHUNK_HEAD (size_t)18
+#define MAX_REQUEST_TARGET BUFFER_SIZE / 2
 #define MB (size_t)1048576
 #define DATE_LEN 30 // date + a null teminator
 

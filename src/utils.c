@@ -164,7 +164,7 @@ bool str_to_long(Str str, long *num)
     return err("verify_str_len", "Potential number longer than long");
 
   char local[str.len + 1], *end = NULL;
-  memcpy(local, str.data, str.len);
+  memcpy(local, str.data, (size_t)str.len);
   local[str.len] = '\0';
   errno = 0;
 
@@ -191,7 +191,7 @@ bool str_to_long_hex(Str str, long *num)
     return err("verify_str_len", "Potential number longer than long");
 
   char local[str.len + 1], *end = NULL;
-  memcpy(local, str.data, str.len);
+  memcpy(local, str.data, (size_t)str.len);
   local[str.len] = '\0';
   errno = 0;
 

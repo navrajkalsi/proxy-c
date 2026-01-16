@@ -83,7 +83,7 @@ bool setup_proxy(void)
 
   // null terminated port
   char port_str[config.listen_port.len + 1];
-  memcpy(port_str, config.listen_port.data, config.listen_port.len);
+  memcpy(port_str, config.listen_port.data, (size_t)config.listen_port.len);
   port_str[config.listen_port.len] = '\0';
 
   int status = 0;
@@ -170,12 +170,11 @@ bool setup_epoll(void)
     return err("epoll_create", strerror(errno));
 
   // adding PROXY_FD to epoll as the listening fd
-  Connection *conn = NULL;
-  if (!(conn = init_proxy_conn()))
+  if (!(PROXY_CONN = init_proxy_conn()))
     return err("init_proxy_conn", NULL);
 
   // EPOLLERR & EPOLLHUP do not need to be added manually
-  add_to_epoll(conn, PROXY_FD, EPOLLIN | EPOLLERR | EPOLLHUP);
+  add_to_epoll(PROXY_CONN, PROXY_FD, EPOLLIN | EPOLLERR | EPOLLHUP);
 
   return true;
 }
@@ -276,7 +275,7 @@ again:
   if (!RUNNING) // if sigint during loop
     return;
 
-  log_state(conn->state);
+  // log_state(conn->state);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
   {
@@ -388,6 +387,9 @@ void free_active_conns(void)
   for (int i = 0; i < MAX_CONNECTIONS; ++i)
     if (active_conns[i])
       free_conn(active_conns + i);
+
+  if (PROXY_CONN)
+    free(PROXY_CONN);
 }
 
 void free_config(void)

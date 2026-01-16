@@ -101,6 +101,13 @@ void read_request(Connection *conn)
 
       print_request(conn);
 
+      if (!client->ssl && config.client_https)
+      { // issue https redirect here
+        warn("verify_protocol", "Upgrading to HTTPS");
+        conn->status = 301;
+        goto error;
+      }
+
       if (!verify_headers(conn, client))
       {
         err("verify_headers", NULL);
@@ -152,7 +159,7 @@ void read_request(Connection *conn)
 
   if (read_status <= 0 && client->ssl)
   {
-    int ssl_error = SSL_get_error(client->ssl, read_status);
+    int ssl_error = SSL_get_error(client->ssl, (int)read_status);
     if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
       return;
     else
@@ -218,7 +225,7 @@ void write_request(Connection *conn)
 
   if (write_status <= 0 && upstream->ssl)
   {
-    int ssl_error = SSL_get_error(upstream->ssl, write_status);
+    int ssl_error = SSL_get_error(upstream->ssl, (int)write_status);
     if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
       return;
     else

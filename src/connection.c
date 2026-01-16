@@ -13,6 +13,7 @@
 
 #include "connection.h"
 #include "proxy.h"
+#include "str.h"
 #include "timer.h"
 #include "utils.h"
 
@@ -150,7 +151,7 @@ void reset_conn(Connection *conn)
 
   conn->status = 0;
   conn->protocol = NULL_STR;
-  conn->path = NULL_STR;
+  conn->target = NULL_STR;
   conn->keep_alive = false;
   conn->complete = false;
 
@@ -332,12 +333,7 @@ void verify_client_protocol(Connection *conn)
       goto error;
     }
   }
-  else if (config.client_https)
-  { // plain http, force redirect
-    conn->status = 301;
-    conn->state = WRITE_ERROR;
-    return;
-  }
+  // issue redirect for http to https only after parsing request line in read request
 
   conn->state = READ_REQUEST;
   return;
@@ -348,13 +344,20 @@ error:
 };
 
 Str get_redirect_location(Connection *conn)
-{ // client buffer's data would be useless at this point
+{ // client buffer's data would be useless at this point, except the path inside the request line
   assert(conn);
-  assert(conn->path.len &&
-         *conn->path.data == '/'); // other forms were rejected during parse_request_line
+  assert(conn->target.len &&
+         *conn->target.data == '/'); // other forms were rejected during parse_request_line
+  // at this point, target will not be larger MAX_REQUEST_TARGET, ie, half of BUFFER_SIZE
+  // so the location will definitely fit inside BUFFER_SIZE of client buffer
+
+  // target is inside the client buffer, localize it and then alter client buffer
+  char local[conn->target.len];
+  Str target_local = {.data = local, .len = conn->target.len};
+  memcpy(target_local.data, conn->target.data, (size_t)target_local.len);
 
   Str location[] = {config.client_https ? HTTPS : HTTP, STR("://"), config.canonical_host.unparsed,
-                    conn->path}, // path must be in origin form(begins with /)
+                    target_local}, // path must be in origin form(begins with /)
       ret = {.data = conn->client.buffer, .len = 0};
   uint num = sizeof location / sizeof(Str);
 
@@ -362,7 +365,7 @@ Str get_redirect_location(Connection *conn)
   {
     // only path can cause overflow, but it would have been rejected during parse_request_line
     assert(ret.len + location[i].len <= (ptrdiff_t)BUFFER_SIZE);
-    memcpy(ret.data + ret.len, location[i].data, location[i].len);
+    memcpy(ret.data + ret.len, location[i].data, (size_t)location[i].len);
     ret.len += location[i].len;
   }
 

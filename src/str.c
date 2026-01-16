@@ -77,7 +77,7 @@ bool equals(Str a, Str b)
 char case_fold_char(char c)
 {
   if (c >= 'A' && c <= 'Z')
-    c = c + 'a' - 'A';
+    c = (char)(c + 'a' - 'A');
 
   return c;
 }

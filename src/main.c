@@ -17,6 +17,7 @@ SSL_CTX *ssl_context = NULL;
 bool RUNNING = true;
 int EPOLL_FD = -1;
 int PROXY_FD = -1;
+Connection *PROXY_CONN = NULL;
 
 int main(int argc, char *argv[])
 {

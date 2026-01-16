@@ -20,9 +20,9 @@ INSTALL ?= install
 NAME := proxy-c
 SRC := $(wildcard src/*.c)
 OBJ := $(SRC:.c=.o)
-CFLAGS ?= -Wall -Werror -Wextra -Iinclude -g -o2
+# CFLAGS ?= -Wall -Werror -Wextra -Iinclude -g -o2
 # Dev Flags
-# CFLAGS ?= -Wall -Werror -Wextra -Wconversion -g -fsanitize=address,undefined -Iinclude
+CFLAGS ?= -Wall -Werror -Wextra -Wconversion -g -fsanitize=address,undefined -Iinclude
 LDFLAGS ?= -lssl -lcrypto
 
 ifdef DEFAULT_PORT

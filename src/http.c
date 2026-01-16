@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -7,6 +8,7 @@
 #include "connection.h"
 #include "http.h"
 #include "proxy.h"
+#include "str.h"
 #include "utils.h"
 
 bool find_empty_line(Str *head)
@@ -93,6 +95,7 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
 
   // should not reach here, for loop returns on empty line
   assert(false);
+  return false;
 }
 
 bool parse_request_line(Connection *conn, Str line)
@@ -129,7 +132,13 @@ bool parse_request_line(Connection *conn, Str line)
     conn->status = 501;
     return err("check_request_target", "Request target method not supported");
   }
-  conn->path = cut.head;
+  conn->target = cut.head;
+
+  if (conn->target.len > (ptrdiff_t)MAX_REQUEST_TARGET)
+  {
+    conn->status = 414;
+    return err("check_request_target", "Request target too long");
+  }
 
   // request protocol
   if (!equals(cut.tail, STR("HTTP/1.0")) && !equals(cut.tail, STR("HTTP/1.1")))
@@ -368,7 +377,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
       // copy to buffer, in case continuing to read, or extracting chunk len
       ptrdiff_t copy = c.found ? c.head.len + CRLF.len : body.len;
-      memcpy(tracker->buffer + tracker->view_len, body.data, copy);
+      memcpy(tracker->buffer + tracker->view_len, body.data, (size_t)copy);
       tracker->view_len += copy;
 
       if (!c.found) // continue reading chunk header
@@ -396,7 +405,7 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
 
     // copy to buffer, in case continuing to read, or extracting chunk len
     ptrdiff_t copy = c.found ? c.head.len + CRLF.len : body.len;
-    memcpy(tracker->buffer + tracker->view_len, body.data, copy);
+    memcpy(tracker->buffer + tracker->view_len, body.data, (size_t)copy);
     tracker->view_len += copy;
 
     if (!c.found) // continue reading chunk header
@@ -417,14 +426,15 @@ bool handle_chunked(Str body, Connection *conn, Endpoint *endpoint)
   {
     if ((size_t)body.len < tracker->chunk_len - tracker->bytes_read)
     { // increment bytes_read and read more
-      tracker->bytes_read += body.len;
+      tracker->bytes_read += (size_t)body.len;
       return true;
     }
 
     // no need to update bytes_read, causing moving on to next state
     tracker->state = TAIL_CRLF;
     body.data += tracker->chunk_len - tracker->bytes_read;
-    if (!(body.len -= tracker->chunk_len - tracker->bytes_read)) // read more from endpoint
+    if (!(body.len -=
+          (ptrdiff_t)(tracker->chunk_len - tracker->bytes_read))) // read more from endpoint
       return true;
 
     return handle_chunked(body, conn, endpoint);
@@ -591,6 +601,8 @@ char *get_status_string(uint status)
     return "408 Request Timout";
   case 413:
     return "413 Content Too Large";
+  case 414:
+    return "414 URI Too Long";
   case 431:
     return "431 Request Header Fields Too Large";
   case 500:

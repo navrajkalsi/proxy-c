@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <getopt.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "args.h"
@@ -23,7 +24,7 @@ void parse_args(int argc, char *argv[])
       args_parsed++;
       break;
     case 'c':
-      str = (Str){strdup(optarg), strlen(optarg)};
+      str = (Str){strdup(optarg), (ptrdiff_t)strlen(optarg)};
 
       if (!parse_url(str, &url)) // no need to free, program will free at exit
         err_n_exit("parse_url", NULL);
@@ -39,7 +40,7 @@ void parse_args(int argc, char *argv[])
       exit(EXIT_SUCCESS);
     case 'p':
       config.listen_port.data = strdup(optarg);
-      config.listen_port.len = strlen(optarg);
+      config.listen_port.len = (ptrdiff_t)strlen(optarg);
 
       if (!validate_port(config.listen_port, NULL))
         err_n_exit("validate_port", NULL);
@@ -55,7 +56,7 @@ void parse_args(int argc, char *argv[])
       args_parsed++;
       break;
     case 'u':
-      str = (Str){strdup(optarg), strlen(optarg)};
+      str = (Str){strdup(optarg), (ptrdiff_t)strlen(optarg)};
 
       if (!parse_url(str, &url))
         err_n_exit("parse_url", NULL);

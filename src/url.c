@@ -21,7 +21,7 @@ bool parse_url(Str str, URL *url)
   int last_found = -1;
   Str next = str;
 
-  for (ptrdiff_t i = 0; i < DELIMITERS_LEN && next.len; ++i)
+  for (int i = 0; i < DELIMITERS_LEN && next.len; ++i)
   {
     Str delimiter = delimiters[i];
     Cut cut = cut_str(next, delimiter);
@@ -72,7 +72,7 @@ bool parse_url(Str str, URL *url)
       assert(false);
     }
 
-    set_bit(tracker_p, i);
+    set_bit(tracker_p, (uint8_t)i);
 
     next = cut.tail;
 
@@ -138,7 +138,7 @@ bool validate_protocol(Str protocol)
 bool validate_host(Str host)
 {
   char string[host.len + 1]; // null terminated hostname
-  memcpy(string, host.data, host.len);
+  memcpy(string, host.data, (size_t)host.len);
   string[host.len] = '\0';
 
   struct addrinfo *res;
