@@ -35,6 +35,8 @@ const char *get_state_string(int state);
 
 void log_state(int state);
 
+void log_ssl_error(int ssl_get_error_ret);
+
 bool str_to_long(Str str, long *num);
 
 bool str_to_long_hex(Str str, long *num);

@@ -311,7 +311,7 @@ again:
     goto again;
 
   case TLS_UPSTREAM:
-    if (!config.upstream_https || setup_endpoint_tls(&conn->upstream))
+    if (!config.upstream_https || setup_endpoint_tls(conn, &conn->upstream))
     {
       add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
       conn->state = WRITE_REQUEST;
@@ -327,7 +327,7 @@ again:
     goto again;
 
   case WRITE_REQUEST:
-    mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    // mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
     arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 

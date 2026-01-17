@@ -109,7 +109,8 @@ void print_endpoint(const Endpoint *endpoint);
 // setups ssl object for the specific endpoint
 // DOES NOT verify, if the config option is set to true or not
 // verify before calling
-bool setup_endpoint_tls(Endpoint *endpoint);
+// adapts ssl_accept or ssl_connect calls depending on upstream or client
+bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint);
 
 // checks if the first byte is ascii alphabet or not
 void verify_client_protocol(Connection *conn);

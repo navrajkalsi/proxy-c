@@ -1,4 +1,3 @@
-#include <asm-generic/errno-base.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -253,30 +252,43 @@ void print_endpoint(const Endpoint *endpoint)
   puts("\033[1;34mEnd\n\033[0m");
 }
 
-bool setup_endpoint_tls(Endpoint *endpoint)
+bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
 {
-  assert(endpoint);
+  assert(conn && endpoint);
+  assert(ssl_context);
 
-  if (ssl_context)
-  {
-    if (!(endpoint->ssl = SSL_new(ssl_context)))
-    { // endpoint.ssl will be free during close_conn, no need to handle here in case of error
-      ERR_print_errors_fp(stderr);
-      return err("SSL_new", NULL);
-    }
-    else if (!SSL_set_fd(endpoint->ssl, endpoint->fd))
-    {
-      ERR_print_errors_fp(stderr);
-      return err("SSL_set_fd", NULL);
-    }
-    else if (!SSL_accept(endpoint->ssl))
-    {
-      ERR_print_errors_fp(stderr);
-      return err("SSL_accept", NULL);
-    }
+  bool client = &conn->client == endpoint, upstream = &conn->upstream == endpoint;
+  assert(client || upstream);
+
+  if (!(endpoint->ssl = SSL_new(ssl_context)))
+  { // endpoint.ssl will be free during close_conn, no need to handle here in case of error
+    ERR_print_errors_fp(stderr);
+    return err("SSL_new", NULL);
   }
 
-  return true;
+  if (!SSL_set_fd(endpoint->ssl, endpoint->fd))
+  {
+    ERR_print_errors_fp(stderr);
+    return err("SSL_set_fd", NULL);
+  }
+
+  int ssl_ret = 1;
+  if (client && (ssl_ret = SSL_accept(endpoint->ssl)) <= 0)
+    err("SSL_accept", NULL);
+
+  if (upstream && (ssl_ret = SSL_connect(endpoint->ssl)) <= 0)
+    err("SSL_connect", NULL);
+
+  // TODO to make more robust call ssl_get_error, perform read or write according to the return val
+
+  if (ssl_ret == 1)
+    return true;
+
+  ssl_ret = SSL_get_error(endpoint->ssl, ssl_ret);
+  log_ssl_error(ssl_ret);
+  perror("test");
+  ERR_print_errors_fp(stderr);
+  assert(false);
 }
 
 void verify_client_protocol(Connection *conn)
@@ -327,7 +339,7 @@ void verify_client_protocol(Connection *conn)
       err("client_tls", "Client TLS not setup, but received an encrypted request");
       goto error;
     }
-    if (!setup_endpoint_tls(client))
+    if (!setup_endpoint_tls(conn, client))
     {
       err("setup_endpoint_tls", NULL);
       goto error;

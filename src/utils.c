@@ -1,5 +1,7 @@
 #include <assert.h>
+#include <openssl/ssl.h>
 #include <signal.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "connection.h"
@@ -153,6 +155,49 @@ const char *get_state_string(int state)
 void log_state(int state)
 {
   puts(get_state_string(state));
+}
+
+void log_ssl_error(int ssl_get_error_ret)
+{
+  switch (ssl_get_error_ret)
+  {
+  case SSL_ERROR_NONE:
+    puts("SSL_ERROR_NONE");
+    break;
+  case SSL_ERROR_ZERO_RETURN:
+    puts("SSL_ERROR_ZERO_RETURN");
+    break;
+  case SSL_ERROR_WANT_READ:
+    puts("SSL_ERROR_WANT_READ");
+    break;
+  case SSL_ERROR_WANT_WRITE:
+    puts("SSL_ERROR_WANT_WRITE");
+    break;
+  case SSL_ERROR_WANT_CONNECT:
+    puts("SSL_ERROR_WANT_CONNECT");
+    break;
+  case SSL_ERROR_WANT_ACCEPT:
+    puts("SSL_ERROR_WANT_ACCEPT");
+    break;
+  case SSL_ERROR_WANT_X509_LOOKUP:
+    puts("SSL_ERROR_WANT_X509_LOOKUP");
+    break;
+  case SSL_ERROR_WANT_ASYNC:
+    puts("SSL_ERROR_WANT_ASYNC");
+    break;
+  case SSL_ERROR_WANT_ASYNC_JOB:
+    puts("SSL_ERROR_WANT_ASYNC_JOB");
+    break;
+  case SSL_ERROR_WANT_CLIENT_HELLO_CB:
+    puts("SSL_ERROR_WANT_CLIENT_HELLO_CB");
+    break;
+  case SSL_ERROR_SYSCALL:
+    puts("SSL_ERROR_SYSCALL");
+    break;
+  case SSL_ERROR_SSL:
+    puts("SSL_ERROR_SSL");
+    break;
+  }
 }
 
 bool str_to_long(Str str, long *num)
