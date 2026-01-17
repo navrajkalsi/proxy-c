@@ -301,7 +301,8 @@ bool generate_error_response(Connection *conn)
   assert(*content_len_data); // must work, if num is > 0, which it is
 
   Str content_length = {.data = content_len_data, .len = num_of_digits},
-      location = get_redirect_location(conn),
+      location = conn->status < 400 ? get_redirect_location(conn) : NULL_STR, // only generate on
+                                                                              // redirections
       response_headers[] = {STR(DEFAULT_HTTP_VER),
                             SPACE,
                             err_str,

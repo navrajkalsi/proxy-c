@@ -28,6 +28,9 @@ bool find_empty_line(Str *head)
       return true;
 
     tmp = line.tail;
+
+    if (!tmp.len)
+      break;
   }
 
   return false;
