@@ -99,11 +99,12 @@ void peek_client(Connection *conn)
       err("client_tls", "Client TLS not setup, but received an encrypted request");
       goto error;
     }
-    // issue redirect for http to https only after parsing request line in read request
     conn->state = TLS_CLIENT;
   }
   else
+    // issue redirect for http to https only after parsing request line in read_request
     conn->state = READ_REQUEST;
+
   return;
 
 error:
@@ -181,7 +182,7 @@ void read_request(Connection *conn)
       }
 
       if (!client->to_read)
-        goto connect_upstream;
+        goto upstream;
     }
     else if (client->content_len)
     {
@@ -196,7 +197,7 @@ void read_request(Connection *conn)
         client->to_read -= (size_t)read_status;
 
       if (!client->to_read)
-        goto connect_upstream;
+        goto upstream;
     }
     else if (client->chunked)
     {
@@ -208,7 +209,7 @@ void read_request(Connection *conn)
       }
 
       if (client->chunk_tracker.empty_found)
-        goto connect_upstream;
+        goto upstream;
     }
     else
       assert(false); // logic error
@@ -219,22 +220,27 @@ void read_request(Connection *conn)
 
   if (read_status <= 0 && client->ssl)
   {
-    int ssl_error = SSL_get_error(client->ssl, (int)read_status);
-    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
-      return;
-    else
+    switch (SSL_get_error(client->ssl, (int)read_status))
     {
-      if (ssl_error == SSL_ERROR_ZERO_RETURN)
-        warn("SSL_read", "Client EOF received");
-      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+    case SSL_ERROR_WANT_READ:
+      conn->prev_state = conn->state;
+      conn->state = SSL_READ;
       return;
+    case SSL_ERROR_WANT_WRITE:
+      conn->prev_state = conn->state;
+      conn->state = SSL_WRITE;
+      return;
+    case SSL_ERROR_ZERO_RETURN:
+      warn("read", "Client EOF received");
+      break;
     }
+    conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking ones
+    return;
   }
 
   if (read_status == 0)
   { // client disconnect for read()
     conn->state = CLOSE_CONN;
-    warn("read", "Client EOF received");
     return;
   }
 
@@ -259,8 +265,11 @@ error:
   conn->state = WRITE_ERROR;
   return;
 
-connect_upstream:
-  conn->state = CONNECT_UPSTREAM;
+upstream:
+  if (conn->upstream.fd < 0)
+    conn->state = CONNECT_UPSTREAM;
+  else
+    conn->state = WRITE_REQUEST;
   return;
 }
 
@@ -285,19 +294,25 @@ void write_request(Connection *conn)
 
   if (write_status <= 0 && upstream->ssl)
   {
-    int ssl_error = SSL_get_error(upstream->ssl, (int)write_status);
-    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
-      return;
-    else
+    switch (SSL_get_error(client->ssl, (int)write_status))
     {
-      if (ssl_error == SSL_ERROR_ZERO_RETURN)
-        err("SSL_write", "No write status");
-      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+    case SSL_ERROR_WANT_READ:
+      conn->prev_state = conn->state;
+      conn->state = SSL_READ;
       return;
+    case SSL_ERROR_WANT_WRITE:
+      conn->prev_state = conn->state;
+      conn->state = SSL_WRITE;
+      return;
+    case SSL_ERROR_ZERO_RETURN:
+      err("SSL_write", "No write status");
+      break;
     }
+    conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking ones
+    return;
   }
 
-  if (!write_status)
+  if (!write_status) // from regular write call
   {
     err("write", "No write status");
     goto error;

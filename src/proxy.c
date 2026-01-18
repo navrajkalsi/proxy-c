@@ -227,7 +227,7 @@ bool start_proxy(void)
       Connection *conn = epoll_events[i].data.ptr;
       assert(conn);
 
-      log_state(conn->state);
+      // log_state(conn->state);
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
@@ -256,7 +256,8 @@ bool start_proxy(void)
       else if (conn->state == WRITE_RESPONSE && events & EPOLLOUT) // send to client
         write_response(conn);
 
-      else if (conn->state == SSL_READ && events & EPOLLIN)
+      else if ((conn->state == SSL_READ && events & EPOLLIN) ||
+               (conn->state == SSL_WRITE && events & EPOLLOUT))
       {
         switch (conn->prev_state)
         {
@@ -266,24 +267,21 @@ bool start_proxy(void)
         case TLS_UPSTREAM:
           setup_endpoint_tls(conn, &conn->upstream);
           break;
-        default:
-          printf("Unexpected previous state for ssl_read: %s\n", get_state_string(conn->state));
-          assert(false);
-        }
-      }
-
-      else if (conn->state == SSL_WRITE && events & EPOLLIN)
-      {
-        switch (conn->prev_state)
-        {
-        case TLS_CLIENT:
-          setup_endpoint_tls(conn, &conn->client);
+        case READ_REQUEST:
+          read_request(conn);
           break;
-        case TLS_UPSTREAM:
-          setup_endpoint_tls(conn, &conn->upstream);
+        case WRITE_REQUEST:
+          write_request(conn);
+          break;
+        case READ_RESPONSE:
+          read_response(conn);
+          break;
+        case WRITE_RESPONSE:
+          write_response(conn);
           break;
         default:
-          printf("Unexpected previous state for ssl_write: %s\n", get_state_string(conn->state));
+          printf("Unexpected previous state for %s: %s\n",
+                 conn->state == SSL_READ ? "ssl_read" : "ssl_write", get_state_string(conn->state));
           assert(false);
         }
       }
@@ -330,7 +328,7 @@ again:
   if (!RUNNING) // if sigint during loop
     return;
 
-  log_state(conn->state);
+  // log_state(conn->state);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
   {
@@ -388,12 +386,14 @@ again:
     goto again;
 
   case SSL_READ:
-    if (conn->prev_state == TLS_CLIENT)
+    if (conn->prev_state == TLS_CLIENT || conn->prev_state == READ_REQUEST ||
+        conn->prev_state == WRITE_RESPONSE)
     {
       mod_in_epoll(conn, *client_fd, READ_FLAGS);
       arm_state_tfd(conn->state_tfd, conn->state, 0);
     }
-    else if (conn->prev_state == TLS_UPSTREAM)
+    else if (conn->prev_state == TLS_UPSTREAM || conn->prev_state == WRITE_REQUEST ||
+             conn->prev_state == READ_RESPONSE)
     {
       mod_in_epoll(conn, *upstream_fd, READ_FLAGS);
       arm_state_tfd(conn->state_tfd, conn->state, 0);
@@ -406,12 +406,14 @@ again:
     break;
 
   case SSL_WRITE:
-    if (conn->prev_state == TLS_CLIENT)
+    if (conn->prev_state == TLS_CLIENT || conn->prev_state == READ_REQUEST ||
+        conn->prev_state == WRITE_RESPONSE)
     {
       mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
       arm_state_tfd(conn->state_tfd, conn->state, 0);
     }
-    else if (conn->prev_state == TLS_UPSTREAM)
+    else if (conn->prev_state == TLS_UPSTREAM || conn->prev_state == WRITE_REQUEST ||
+             conn->prev_state == READ_RESPONSE)
     {
       mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
       arm_state_tfd(conn->state_tfd, conn->state, 0);

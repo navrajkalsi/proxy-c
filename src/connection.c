@@ -284,23 +284,27 @@ void setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
   if (upstream)
     assert(config.upstream_https);
 
-  if ((client && !(endpoint->ssl = SSL_new(client_ssl_ctx))) ||
-      (upstream && !(endpoint->ssl = SSL_new(upstream_ssl_ctx))))
-  { // endpoint.ssl will be freed during close_conn, no need to handle here in case of error
-    err("SSL_new", NULL);
-    goto error;
-  }
+  SSL_CTX *context = client ? client_ssl_ctx : upstream_ssl_ctx;
 
-  if (!SSL_set_fd(endpoint->ssl, endpoint->fd))
-  {
-    err("SSL_set_fd", NULL);
-    goto error;
-  }
+  if (!endpoint->ssl)
+  { // this may be the second time this function is being called after SSL_READ or WRITE states
+    if (!(endpoint->ssl = SSL_new(context)))
+    {
+      err("SSL_new", NULL);
+      goto error;
+    }
 
-  if (client)
-    SSL_set_accept_state(endpoint->ssl);
-  else
-    SSL_set_connect_state(endpoint->ssl);
+    if (!SSL_set_fd(endpoint->ssl, endpoint->fd))
+    {
+      err("SSL_set_fd", NULL);
+      goto error;
+    }
+
+    if (client)
+      SSL_set_accept_state(endpoint->ssl);
+    else
+      SSL_set_connect_state(endpoint->ssl);
+  }
 
   int ret = SSL_do_handshake(endpoint->ssl);
 
@@ -311,16 +315,19 @@ void setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
   }
 
   int ssl_err = SSL_get_error(endpoint->ssl, ret);
-  log_ssl_error(ssl_err);
+  // log_ssl_error(ssl_err);
   switch (ssl_err)
   {
-  case (SSL_ERROR_WANT_READ): // wait for pollin
+  case SSL_ERROR_WANT_READ: // wait for pollin
     conn->prev_state = conn->state;
     conn->state = SSL_READ;
     return;
-  case (SSL_ERROR_WANT_WRITE): // wait for pollout
+  case SSL_ERROR_WANT_WRITE: // wait for pollout
     conn->prev_state = conn->state;
     conn->state = SSL_WRITE;
+    return;
+  case SSL_ERROR_SSL: // fatal error, close right away
+    conn->state = CLOSE_CONN;
     return;
   default:
     goto error;

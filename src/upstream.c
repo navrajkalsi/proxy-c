@@ -204,16 +204,22 @@ void read_response(Connection *conn)
 
   if (read_status <= 0 && upstream->ssl)
   {
-    int ssl_error = SSL_get_error(upstream->ssl, (int)read_status);
-    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
-      return;
-    else
+    switch (SSL_get_error(upstream->ssl, (int)read_status))
     {
-      if (ssl_error == SSL_ERROR_ZERO_RETURN)
-        warn("SSL_read", "Upstream EOF received");
-      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+    case SSL_ERROR_WANT_READ:
+      conn->prev_state = conn->state;
+      conn->state = SSL_READ;
       return;
+    case SSL_ERROR_WANT_WRITE:
+      conn->prev_state = conn->state;
+      conn->state = SSL_WRITE;
+      return;
+    case SSL_ERROR_ZERO_RETURN:
+      warn("read", "Upstream EOF received");
+      break;
     }
+    conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking ones
+    return;
   }
 
   if (read_status == 0)
@@ -375,17 +381,9 @@ bool write_error_response(Connection *conn)
     upstream->write_index += write_status;
 
   if (write_status <= 0 && client->ssl)
-  {
-    int ssl_error = SSL_get_error(client->ssl, (int)write_status);
-    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
-      return true;
-    else
-    {
-      if (ssl_error == SSL_ERROR_ZERO_RETURN)
-        err("SSL_write", "No write status");
-      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
-      return false;
-    }
+  { // do not attempt to recover
+    err("SSL_write", "No write status");
+    return false;
   }
 
   if (!write_status)
@@ -430,16 +428,22 @@ void write_response(Connection *conn)
 
   if (write_status <= 0 && client->ssl)
   {
-    int ssl_error = SSL_get_error(client->ssl, (int)write_status);
-    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
-      return;
-    else
+    switch (SSL_get_error(client->ssl, (int)write_status))
     {
-      if (ssl_error == SSL_ERROR_ZERO_RETURN)
-        err("SSL_write", "No write status");
-      conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking
+    case SSL_ERROR_WANT_READ:
+      conn->prev_state = conn->state;
+      conn->state = SSL_READ;
       return;
+    case SSL_ERROR_WANT_WRITE:
+      conn->prev_state = conn->state;
+      conn->state = SSL_WRITE;
+      return;
+    case SSL_ERROR_ZERO_RETURN:
+      err("SSL_write", "No write status");
+      break;
     }
+    conn->state = CLOSE_CONN; // close for all ssl_errors, except non-blocking ones
+    return;
   }
 
   if (!write_status)
