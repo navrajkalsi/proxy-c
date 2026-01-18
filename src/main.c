@@ -1,3 +1,4 @@
+#include <openssl/err.h>
 #include <openssl/ssl.h>
 
 #include "args.h"
@@ -52,6 +53,6 @@ int main(int argc, char *argv[])
     SSL_CTX_free(client_ssl_ctx);
   if (upstream_ssl_ctx)
     SSL_CTX_free(upstream_ssl_ctx);
-  EVP_cleanup();
+  ERR_clear_error();
   return 0;
 }

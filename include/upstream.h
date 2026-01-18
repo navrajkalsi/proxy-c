@@ -10,8 +10,8 @@
 // http or https from config.upstream_https
 bool setup_upstream(void);
 
-// prepares a new socket for upstream, connects to it points upstream_fd to the new socket fd
-bool connect_upstream(int *upstream_fd);
+// prepares a new socket for upstream, connects to it
+void connect_upstream(Connection *conn);
 
 void free_upstream_addrinfo(void);
 

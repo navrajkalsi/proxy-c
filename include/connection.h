@@ -64,11 +64,11 @@ typedef struct connection
   struct connection **self_ptr; // this will be an element of active_conns array, used to
                                 // deactive/remove from active_conns(just make this NULL)
   State state;
-  State timeout_state; // state conn was in right before timing out
-  int conn_tfd;        // full conn timeout, also use for keep-alive
-  int state_tfd;       // timeout for individual read/write states
-  uint status;         // http status code
-  bool complete;       // full response received and sent
+  State prev_state; // state conn was in right before current state, used in timeouts and ssl errors
+  int conn_tfd;     // full conn timeout, also use for keep-alive
+  int state_tfd;    // timeout for individual read/write states
+  uint status;      // http status code
+  bool complete;    // full response received and sent
   bool keep_alive;
 } Connection;
 
@@ -120,7 +120,7 @@ void print_endpoint(const Endpoint *endpoint);
 // DOES NOT verify, if the config option is set to true or not
 // verify before calling
 // adapts ssl_accept or ssl_connect calls depending on upstream or client
-bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint);
+void setup_endpoint_tls(Connection *conn, Endpoint *endpoint);
 
 // uses clients buffer to piece together the redirect
 Str get_redirect_location(Connection *conn);

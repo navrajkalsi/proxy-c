@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <sched.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -71,6 +72,18 @@ void free_conn(Connection **conn)
 
   Connection *to_free = *conn;
   deactivate_conn(*conn);
+
+  if (to_free->client.fd >= 0)
+  {
+    del_from_epoll(to_free->client.fd);
+    close(to_free->client.fd);
+  }
+
+  if (to_free->upstream.fd >= 0)
+  {
+    del_from_epoll(to_free->upstream.fd);
+    close(to_free->upstream.fd);
+  }
 
   del_from_epoll(to_free->conn_tfd);
   del_from_epoll(to_free->state_tfd);
@@ -254,7 +267,7 @@ void print_endpoint(const Endpoint *endpoint)
   puts("\033[1;34mEnd\n\033[0m");
 }
 
-bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
+void setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
 {
   assert(conn && endpoint);
   if (config.client_https)
@@ -271,33 +284,52 @@ bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
 
   if ((client && !(endpoint->ssl = SSL_new(client_ssl_ctx))) ||
       (upstream && !(endpoint->ssl = SSL_new(upstream_ssl_ctx))))
-  { // endpoint.ssl will be free during close_conn, no need to handle here in case of error
-    ERR_print_errors_fp(stderr);
-    return err("SSL_new", NULL);
+  { // endpoint.ssl will be freed during close_conn, no need to handle here in case of error
+    err("SSL_new", NULL);
+    goto error;
   }
 
   if (!SSL_set_fd(endpoint->ssl, endpoint->fd))
   {
-    ERR_print_errors_fp(stderr);
-    return err("SSL_set_fd", NULL);
+    err("SSL_set_fd", NULL);
+    goto error;
   }
 
-  int ssl_ret = 1;
-  if (client && (ssl_ret = SSL_accept(endpoint->ssl)) <= 0)
-    err("SSL_accept", NULL);
+  if (client)
+    SSL_set_accept_state(endpoint->ssl);
+  else
+    SSL_set_connect_state(endpoint->ssl);
 
-  if (upstream && (ssl_ret = SSL_connect(endpoint->ssl)) <= 0)
-    err("SSL_connect", NULL);
+  int ret = SSL_do_handshake(endpoint->ssl);
 
-  // TODO to make more robust call ssl_get_error, perform read or write according to the return val
+  if (ret == 1)
+  {
+    conn->state = client ? READ_REQUEST : WRITE_REQUEST;
+    return;
+  }
 
-  if (ssl_ret == 1)
-    return true;
+  int ssl_err = SSL_get_error(endpoint->ssl, ret);
+  log_ssl_error(ssl_err);
+  switch (ssl_err)
+  {
+  case (SSL_ERROR_WANT_READ): // wait for pollin
+    conn->prev_state = conn->state;
+    conn->state = SSL_READ;
+    return;
+  case (SSL_ERROR_WANT_WRITE): // wait for pollout
+    conn->prev_state = conn->state;
+    conn->state = SSL_WRITE;
+    return;
+  default:
+    goto error;
+  }
 
-  ssl_ret = SSL_get_error(endpoint->ssl, ssl_ret);
-  log_ssl_error(ssl_ret);
+error:
   ERR_print_errors_fp(stderr);
-  assert(false);
+  ERR_clear_error();
+  conn->state = client ? CLOSE_CONN : WRITE_ERROR;
+  conn->status = 500;
+  return;
 }
 
 Str get_redirect_location(Connection *conn)

@@ -58,23 +58,26 @@ bool setup_tls_helper(EndpointType type)
     goto cleanup;
   }
 
-  if (SSL_CTX_use_certificate_file(context, DOMAIN_CERT, SSL_FILETYPE_PEM) != 1)
+  if (type == CLIENT)
   {
-    err("SSL_CTX_use_certificate_file", NULL);
-    goto cleanup;
-  }
+    if (SSL_CTX_use_certificate_file(context, DOMAIN_CERT, SSL_FILETYPE_PEM) != 1)
+    {
+      err("SSL_CTX_use_certificate_file", NULL);
+      goto cleanup;
+    }
 
-  if (SSL_CTX_use_PrivateKey_file(context, PRIVATE_KEY, SSL_FILETYPE_PEM) != 1)
-  {
-    err("SSL_CTX_use_PrivateKey_file", NULL);
-    goto cleanup;
-  }
+    if (SSL_CTX_use_PrivateKey_file(context, PRIVATE_KEY, SSL_FILETYPE_PEM) != 1)
+    {
+      err("SSL_CTX_use_PrivateKey_file", NULL);
+      goto cleanup;
+    }
 
-  // sanity check, if key & cert match
-  if (SSL_CTX_check_private_key(context) != 1)
-  {
-    err("SSL_CTX_check_private_key", NULL);
-    goto cleanup;
+    // sanity check, if key & cert match
+    if (SSL_CTX_check_private_key(context) != 1)
+    {
+      err("SSL_CTX_check_private_key", NULL);
+      goto cleanup;
+    }
   }
 
   if (type == CLIENT)
@@ -224,7 +227,6 @@ bool start_proxy(void)
       Connection *conn = epoll_events[i].data.ptr;
       assert(conn);
 
-    again:
       log_state(conn->state);
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
@@ -234,16 +236,13 @@ bool start_proxy(void)
 
       else if (events & EPOLLIN && tfd_expired(conn->state_tfd))
       {
-        conn->timeout_state = conn->state;
+        conn->prev_state = conn->state;
         conn->state = STATE_TIMEDOUT;
       }
 
       else if (conn->state == PEEK_CLIENT && events & EPOLLIN)
-      {
+        // no need to drain the peeked data as we are using epolloneshot and it will be rearmed
         peek_client(conn);
-        if (conn->state == READ_REQUEST)
-          goto again; // the peeked data needs to be drained before handling state
-      }
 
       else if (conn->state == READ_REQUEST && events & EPOLLIN) // read from client
         read_request(conn);                                     // write error is not waited on
@@ -256,6 +255,38 @@ bool start_proxy(void)
 
       else if (conn->state == WRITE_RESPONSE && events & EPOLLOUT) // send to client
         write_response(conn);
+
+      else if (conn->state == SSL_READ && events & EPOLLIN)
+      {
+        switch (conn->prev_state)
+        {
+        case TLS_CLIENT:
+          setup_endpoint_tls(conn, &conn->client);
+          break;
+        case TLS_UPSTREAM:
+          setup_endpoint_tls(conn, &conn->upstream);
+          break;
+        default:
+          printf("Unexpected previous state for ssl_read: %s\n", get_state_string(conn->state));
+          assert(false);
+        }
+      }
+
+      else if (conn->state == SSL_WRITE && events & EPOLLIN)
+      {
+        switch (conn->prev_state)
+        {
+        case TLS_CLIENT:
+          setup_endpoint_tls(conn, &conn->client);
+          break;
+        case TLS_UPSTREAM:
+          setup_endpoint_tls(conn, &conn->upstream);
+          break;
+        default:
+          printf("Unexpected previous state for ssl_write: %s\n", get_state_string(conn->state));
+          assert(false);
+        }
+      }
 
       else if (events & EPOLLHUP)
       {
@@ -286,6 +317,8 @@ bool start_proxy(void)
   return true;
 }
 
+// all fds will be added to epoll as soon as they are created in the respective function
+// only mod fds here
 void handle_state(Connection *conn)
 {
   if (conn->state == ACCEPT_CLIENT)
@@ -311,17 +344,7 @@ again:
 
   case TLS_CLIENT:
     assert(config.client_https); // only get here if the peeked data is encrypted
-    if (!setup_endpoint_tls(conn, &conn->upstream))
-    {
-      err("setup_endpoint_tls", NULL);
-      conn->state = CLOSE_CONN;
-    }
-    else
-    {
-      conn->state = READ_REQUEST;
-      arm_state_tfd(conn->state_tfd, conn->state, 0);
-      read_request(conn); // read what's in the buffer before waiting again
-    }
+    setup_endpoint_tls(conn, &conn->client);
     goto again;
 
   case READ_REQUEST:
@@ -338,33 +361,15 @@ again:
     goto again;
 
   case CONNECT_UPSTREAM:
-    if (connect_upstream(upstream_fd))
-      conn->state = TLS_UPSTREAM;
-    else
-    {
-      conn->status = 500;
-      conn->state = WRITE_ERROR;
-    }
+    connect_upstream(conn);
     goto again;
 
   case TLS_UPSTREAM:
-    if (!config.upstream_https || setup_endpoint_tls(conn, &conn->upstream))
-    {
-      add_to_epoll(conn, *upstream_fd, WRITE_FLAGS);
-      conn->state = WRITE_REQUEST;
-    }
-    else
-    {                      // for upstream error, send error response to client
-      close(*upstream_fd); // closing here as close_conn will want to delete this from epoll
-      *upstream_fd = -1;
-      err("setup_endpoint_tls", NULL);
-      conn->status = 500;
-      conn->state = WRITE_ERROR;
-    }
+    setup_endpoint_tls(conn, &conn->upstream);
     goto again;
 
   case WRITE_REQUEST:
-    // mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
+    mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
     arm_state_tfd(conn->state_tfd, conn->state, 0);
     break;
 
@@ -382,34 +387,63 @@ again:
     check_conn(conn);
     goto again;
 
+  case SSL_READ:
+    if (conn->prev_state == TLS_CLIENT)
+    {
+      mod_in_epoll(conn, *client_fd, READ_FLAGS);
+      arm_state_tfd(conn->state_tfd, conn->state, 0);
+    }
+    else if (conn->prev_state == TLS_UPSTREAM)
+    {
+      mod_in_epoll(conn, *upstream_fd, READ_FLAGS);
+      arm_state_tfd(conn->state_tfd, conn->state, 0);
+    }
+    else
+    {
+      printf("Unexpected previous state for ssl_read: %s\n", get_state_string(conn->prev_state));
+      assert(false);
+    }
+    break;
+
+  case SSL_WRITE:
+    if (conn->prev_state == TLS_CLIENT)
+    {
+      mod_in_epoll(conn, *client_fd, WRITE_FLAGS);
+      arm_state_tfd(conn->state_tfd, conn->state, 0);
+    }
+    else if (conn->prev_state == TLS_UPSTREAM)
+    {
+      mod_in_epoll(conn, *upstream_fd, WRITE_FLAGS);
+      arm_state_tfd(conn->state_tfd, conn->state, 0);
+    }
+    else
+    {
+      printf("Unexpected previous state for ssl_write: %s\n", get_state_string(conn->prev_state));
+      assert(false);
+    }
+    break;
+
   case CONN_TIMEDOUT:
     conn->status = 408;
     conn->state = WRITE_ERROR;
     goto again;
 
   case STATE_TIMEDOUT:
-    if (conn->timeout_state == READ_REQUEST || conn->timeout_state == WRITE_REQUEST)
+    if (conn->prev_state == SSL_READ || conn->prev_state == SSL_WRITE)
+    { // just close conn on ssl timeouts
+      conn->state = CLOSE_CONN;
+      goto again;
+    }
+    if (conn->prev_state == READ_REQUEST || conn->prev_state == WRITE_REQUEST)
       conn->status = 408;
-    else if (conn->timeout_state == READ_RESPONSE || conn->timeout_state == WRITE_RESPONSE)
+    else if (conn->prev_state == READ_RESPONSE || conn->prev_state == WRITE_RESPONSE)
       conn->status = 504;
-    else // only these 4 states should be possible from the main wait loop
+    else
       assert(false);
     conn->state = WRITE_ERROR;
     goto again;
 
   case CLOSE_CONN:
-    if (*client_fd >= 0)
-    {
-      del_from_epoll(*client_fd);
-      close(*client_fd);
-    }
-
-    if (*upstream_fd >= 0)
-    {
-      del_from_epoll(*upstream_fd);
-      close(*upstream_fd);
-    }
-
     free_conn(&conn);
     break;
 

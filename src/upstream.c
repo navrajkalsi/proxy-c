@@ -50,20 +50,23 @@ bool setup_upstream(void)
   return true;
 }
 
-bool connect_upstream(int *upstream_fd)
+void connect_upstream(Connection *conn)
 {
-  assert(upstream_addrinfo);
+  assert(upstream_addrinfo && conn);
+  assert(conn->state == CONNECT_UPSTREAM);
+
+  int upstream_fd = -1;
 
   for (struct addrinfo *current = upstream_addrinfo; current; current = current->ai_next)
   {
-    if ((*upstream_fd = socket(current->ai_family, current->ai_socktype, current->ai_protocol)) ==
+    if ((upstream_fd = socket(current->ai_family, current->ai_socktype, current->ai_protocol)) ==
         -1)
       continue;
 
-    if (connect(*upstream_fd, current->ai_addr, current->ai_addrlen) == -1)
+    if (connect(upstream_fd, current->ai_addr, current->ai_addrlen) == -1)
     {
-      close(*upstream_fd);
-      *upstream_fd = -2;
+      close(upstream_fd);
+      upstream_fd = -2;
       continue;
     }
 
@@ -71,17 +74,26 @@ bool connect_upstream(int *upstream_fd)
     break;
   };
 
-  if (*upstream_fd < 0)
+  if (upstream_fd < 0)
   { // dealing with different errors
-    if (*upstream_fd == -1)
-      return err("socket", strerror(errno));
-    else if (*upstream_fd == -2)
-      return err("connect", strerror(errno));
+    if (upstream_fd == -1)
+      err("socket", strerror(errno));
+    else if (upstream_fd == -2)
+      err("connect", strerror(errno));
+    conn->status = 500;
+    conn->state = WRITE_ERROR;
+    return;
   }
 
-  set_non_block(*upstream_fd);
+  conn->upstream.fd = upstream_fd;
 
-  return true;
+  set_non_block(upstream_fd);
+  add_to_epoll(conn, upstream_fd, 0);
+
+  if (config.upstream_https)
+    conn->state = TLS_UPSTREAM;
+  else
+    conn->state = WRITE_REQUEST;
 }
 
 void free_upstream_addrinfo(void)

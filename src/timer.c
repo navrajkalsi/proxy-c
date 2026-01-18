@@ -2,11 +2,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "connection.h"
 #include "timer.h"
 #include "utils.h"
 
 // indices corresponding to timer_types enum
-static const time_t timer_defaults[TIMER_TYPES_LEN] = {15, 10, 30, 10, 45};
+static const time_t timer_defaults[TIMER_TYPES_LEN] = {15, 10, 30, 10, 15, 10, 45};
 
 void create_tfd(int *timer_fd)
 {
@@ -44,6 +45,10 @@ void arm_state_tfd(int state_tfd, State state, time_t sec)
     return arm_tfd(state_tfd, timer_defaults[RESPONSE_READ]);
   case WRITE_RESPONSE:
     return arm_tfd(state_tfd, timer_defaults[RESPONSE_WRITE]);
+  case SSL_READ:
+    return arm_tfd(state_tfd, timer_defaults[READ_SSL]);
+  case SSL_WRITE:
+    return arm_tfd(state_tfd, timer_defaults[WRITE_SSL]);
   default:
     assert(false); // logic error
   }
