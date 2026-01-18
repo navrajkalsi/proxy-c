@@ -1,5 +1,6 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <string.h>
 
 #include "args.h"
 #include "main.h"
@@ -50,9 +51,15 @@ int main(int argc, char *argv[])
   free_active_conns();
   free_config();
   if (client_ssl_ctx)
+  {
     SSL_CTX_free(client_ssl_ctx);
+    client_ssl_ctx = NULL;
+  }
   if (upstream_ssl_ctx)
+  {
     SSL_CTX_free(upstream_ssl_ctx);
+    upstream_ssl_ctx = NULL;
+  }
   ERR_clear_error();
   return 0;
 }

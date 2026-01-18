@@ -95,12 +95,14 @@ void free_conn(Connection **conn)
   {
     SSL_shutdown(to_free->client.ssl);
     SSL_free(to_free->client.ssl);
+    to_free->client.ssl = NULL;
   }
 
   if (to_free->upstream.ssl)
   {
     SSL_shutdown(to_free->upstream.ssl);
     SSL_free(to_free->upstream.ssl);
+    to_free->upstream.ssl = NULL;
   }
 
   free(to_free);
