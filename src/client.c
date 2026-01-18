@@ -44,10 +44,71 @@ void accept_client(void)
 
     set_non_block(conn->client.fd);
 
-    // new conn should start with TLS_CLIENT
-    conn->state = TLS_CLIENT;
+    // new conn should start by checking the first bytes of client request
+    conn->state = PEEK_CLIENT;
     add_to_epoll(conn, conn->client.fd, READ_FLAGS);
   }
+}
+
+void peek_client(Connection *conn)
+{
+  assert(conn);
+  assert(conn->state == PEEK_CLIENT);
+
+  Endpoint *client = &conn->client;
+
+  // peek at first 3 bytes
+  char tls_hello[3];
+
+  ssize_t status = recv(client->fd, tls_hello, sizeof tls_hello, MSG_PEEK);
+  bool tls = true;
+
+  if (status == -1)
+  {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) // should not block as reading right after epollin
+      NULL;
+    if (errno == EINTR && !RUNNING) // shutdown
+      return;
+    err("recv", strerror(errno));
+    goto error;
+  }
+
+  // should atleast get 3 bytes
+  // cannot epollin again, have to drain the buffer or switch to level triggered
+  // which would be too complex for such a trivial task
+  if (status < 3)
+  {
+    err("verify_hello_len", "Too few bytes received");
+    goto error;
+  }
+
+  if (*tls_hello == 0x16 && tls_hello[1] == 0x03 && tls_hello[2] <= 0x03)
+    tls = true;
+  else if (*tls_hello >= 'A' && *tls_hello <= 'Z')
+    tls = false;
+  else
+  {
+    err("verify_client_hello", "Malformed Request");
+    goto error;
+  }
+
+  if (tls)
+  {
+    if (!config.client_https)
+    {
+      err("client_tls", "Client TLS not setup, but received an encrypted request");
+      goto error;
+    }
+    // issue redirect for http to https only after parsing request line in read request
+    conn->state = TLS_CLIENT;
+  }
+  else
+    conn->state = READ_REQUEST;
+  return;
+
+error:
+  conn->status = 500;
+  conn->state = CLOSE_CONN;
 }
 
 void read_request(Connection *conn)

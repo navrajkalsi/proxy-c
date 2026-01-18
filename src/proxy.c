@@ -13,66 +13,87 @@
 #include "upstream.h"
 #include "utils.h"
 
-bool setup_tls(void)
+bool setup_tls_ctxs(void)
 {
   if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL) != 1)
     return err("OPENSSL_init_ssl", NULL);
 
-  const SSL_METHOD *method = TLS_server_method(); // enables TLS support
-  ssl_context = SSL_CTX_new(method); // the context stores all certs & keys for the conns
+  // only generate ctx for the side that supposed to be using https
 
-  if (!ssl_context)
+  if (config.client_https && !setup_tls_helper(CLIENT))
+    return err("setup_client_tls_context", NULL);
+
+  if (config.upstream_https && !setup_tls_helper(UPSTREAM))
+    return err("setup_upstream_tls_context", NULL);
+
+  return true;
+}
+
+bool setup_tls_helper(EndpointType type)
+{
+  assert(type == CLIENT || type == UPSTREAM);
+
+  // proxy acts as a server for client, therefore namings will be inverted
+  const SSL_METHOD *method = type == CLIENT ? TLS_server_method() : TLS_client_method();
+
+  SSL_CTX *context = SSL_CTX_new(method); // the context stores all certs & keys for the conns
+
+  if (!context)
   {
     ERR_print_errors_fp(stderr);
     return err("SSL_CTX_new", NULL);
   }
 
   // setting minimum version for TLS (TLS 1.2)
-  if (SSL_CTX_set_min_proto_version(ssl_context, TLS1_2_VERSION) != 1)
+  if (SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION) != 1)
   {
     err("SSL_CTX_set_min_proto_version", NULL);
     goto cleanup;
   }
 
   // using strong cipher suites
-  if (SSL_CTX_set_cipher_list(ssl_context, "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4") != 1)
+  if (SSL_CTX_set_cipher_list(context, "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4") != 1)
   {
     err("SSL_CTX_set_cipher_list", NULL);
     goto cleanup;
   }
 
-  if (SSL_CTX_use_certificate_file(ssl_context, DOMAIN_CERT, SSL_FILETYPE_PEM) != 1)
+  if (SSL_CTX_use_certificate_file(context, DOMAIN_CERT, SSL_FILETYPE_PEM) != 1)
   {
     err("SSL_CTX_use_certificate_file", NULL);
     goto cleanup;
   }
 
-  if (SSL_CTX_use_PrivateKey_file(ssl_context, PRIVATE_KEY, SSL_FILETYPE_PEM) != 1)
+  if (SSL_CTX_use_PrivateKey_file(context, PRIVATE_KEY, SSL_FILETYPE_PEM) != 1)
   {
     err("SSL_CTX_use_PrivateKey_file", NULL);
     goto cleanup;
   }
 
   // sanity check, if key & cert match
-  if (SSL_CTX_check_private_key(ssl_context) != 1)
+  if (SSL_CTX_check_private_key(context) != 1)
   {
     err("SSL_CTX_check_private_key", NULL);
     goto cleanup;
   }
 
+  if (type == CLIENT)
+    client_ssl_ctx = context;
+  else
+    upstream_ssl_ctx = context;
   return true;
 
 cleanup:
   ERR_print_errors_fp(stderr);
-  SSL_CTX_free(ssl_context);
+  SSL_CTX_free(context);
   return false;
 }
 
 bool setup_proxy(void)
 {
   if (config.client_https || config.upstream_https)
-    if (!setup_tls())
-      return err("setup_tls", NULL);
+    if (!setup_tls_ctxs())
+      return err("setup_tls_ctxs", NULL);
 
   // ai_flags=PASSIVE & domain=NULL is required for a socket to be binded
   struct addrinfo hints, *out, *current;

@@ -13,7 +13,8 @@ Config config = {.canonical_host = {.host = NULL_STR, .port = NULL_STR},
                  .log_warnings = false,
                  .client_https = false,
                  .upstream_https = false};
-SSL_CTX *ssl_context = NULL;
+SSL_CTX *client_ssl_ctx = NULL;
+SSL_CTX *upstream_ssl_ctx = NULL;
 bool RUNNING = true;
 int EPOLL_FD = -1;
 int PROXY_FD = -1;
@@ -47,8 +48,10 @@ int main(int argc, char *argv[])
   free_upstream_addrinfo();
   free_active_conns();
   free_config();
-  if (ssl_context)
-    SSL_CTX_free(ssl_context);
+  if (client_ssl_ctx)
+    SSL_CTX_free(client_ssl_ctx);
+  if (upstream_ssl_ctx)
+    SSL_CTX_free(upstream_ssl_ctx);
   EVP_cleanup();
   return 0;
 }

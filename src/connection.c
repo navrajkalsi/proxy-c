@@ -37,7 +37,9 @@ Connection *init_conn(void)
   client->next_index = upstream->next_index = 0;
 
   client->head.data = client->buffer; // initally request points to beginning of the buffer
+  client->type = CLIENT;
   upstream->head.data = upstream->buffer;
+  upstream->type = UPSTREAM;
 
   conn->conn_tfd = conn->state_tfd = -1;
   create_tfd(&conn->conn_tfd);
@@ -255,12 +257,20 @@ void print_endpoint(const Endpoint *endpoint)
 bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
 {
   assert(conn && endpoint);
-  assert(ssl_context);
+  if (config.client_https)
+    assert(client_ssl_ctx);
+  if (config.upstream_https)
+    assert(upstream_ssl_ctx);
 
   bool client = &conn->client == endpoint, upstream = &conn->upstream == endpoint;
   assert(client || upstream);
+  if (client)
+    assert(config.client_https);
+  if (upstream)
+    assert(config.upstream_https);
 
-  if (!(endpoint->ssl = SSL_new(ssl_context)))
+  if ((client && !(endpoint->ssl = SSL_new(client_ssl_ctx))) ||
+      (upstream && !(endpoint->ssl = SSL_new(upstream_ssl_ctx))))
   { // endpoint.ssl will be free during close_conn, no need to handle here in case of error
     ERR_print_errors_fp(stderr);
     return err("SSL_new", NULL);
@@ -286,74 +296,9 @@ bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
 
   ssl_ret = SSL_get_error(endpoint->ssl, ssl_ret);
   log_ssl_error(ssl_ret);
-  perror("test");
   ERR_print_errors_fp(stderr);
   assert(false);
 }
-
-void verify_client_protocol(Connection *conn)
-{
-  assert(conn);
-  assert(conn->state == TLS_CLIENT);
-
-  Endpoint *client = &conn->client;
-
-  // peek at first 3 bytes
-  char tls_hello[3];
-
-  ssize_t status = recv(client->fd, tls_hello, sizeof tls_hello, MSG_PEEK);
-  bool tls = true;
-
-  if (status == -1)
-  {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) // should not block as reading right after epollin
-      NULL;
-    if (errno == EINTR && !RUNNING) // shutdown
-      return;
-    err("recv", strerror(errno));
-    goto error;
-  }
-
-  // should atleast get 3 bytes
-  // cannot epollin again, have to drain the buffer or switch to level triggered
-  if (status < 3)
-  {
-    err("verify_hello_len", "Too few bytes received");
-    goto error;
-  }
-
-  if (*tls_hello == 0x16 && tls_hello[1] == 0x03 && tls_hello[2] <= 0x03)
-    tls = true;
-  else if (*tls_hello >= 'A' && *tls_hello <= 'Z')
-    tls = false;
-  else
-  {
-    err("verify_client_hello", "Malformed Request");
-    goto error;
-  }
-
-  if (tls)
-  {
-    if (!config.client_https)
-    {
-      err("client_tls", "Client TLS not setup, but received an encrypted request");
-      goto error;
-    }
-    if (!setup_endpoint_tls(conn, client))
-    {
-      err("setup_endpoint_tls", NULL);
-      goto error;
-    }
-  }
-  // issue redirect for http to https only after parsing request line in read request
-
-  conn->state = READ_REQUEST;
-  return;
-
-error:
-  conn->status = 500;
-  conn->state = CLOSE_CONN;
-};
 
 Str get_redirect_location(Connection *conn)
 { // client buffer's data would be useless at this point, except the path inside the request line

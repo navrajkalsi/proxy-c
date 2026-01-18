@@ -8,6 +8,7 @@
 typedef enum
 {
   ACCEPT_CLIENT, // only if PROXY_FD is set
+  PEEK_CLIENT,   // to determine the protocol used by client
   TLS_CLIENT,
   READ_REQUEST,
   WRITE_ERROR,
@@ -21,6 +22,12 @@ typedef enum
   STATE_TIMEDOUT,
   CLOSE_CONN
 } State;
+
+typedef enum
+{
+  CLIENT,
+  UPSTREAM
+} EndpointType;
 
 typedef struct endpoint
 {
@@ -36,6 +43,7 @@ typedef struct endpoint
   size_t to_write;       // bytes remaining to write, across writes
   size_t content_len;    // for client - len of req body,upstream - len of res body
   int fd;
+  EndpointType type;
   bool chunked;       // transfer encoding
   bool headers_found; // if nothing more is needed to be read from the current request,
                       // stop reading if new request is detected, in case of client
@@ -111,9 +119,6 @@ void print_endpoint(const Endpoint *endpoint);
 // verify before calling
 // adapts ssl_accept or ssl_connect calls depending on upstream or client
 bool setup_endpoint_tls(Connection *conn, Endpoint *endpoint);
-
-// checks if the first byte is ascii alphabet or not
-void verify_client_protocol(Connection *conn);
 
 // uses clients buffer to piece together the redirect
 Str get_redirect_location(Connection *conn);
