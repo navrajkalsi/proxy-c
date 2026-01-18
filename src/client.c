@@ -61,7 +61,7 @@ void peek_client(Connection *conn)
   char tls_hello[3];
 
   ssize_t status = recv(client->fd, tls_hello, sizeof tls_hello, MSG_PEEK);
-  bool tls = true;
+  bool encrypted = true;
 
   if (status == -1)
   {
@@ -83,16 +83,16 @@ void peek_client(Connection *conn)
   }
 
   if (*tls_hello == 0x16 && tls_hello[1] == 0x03 && tls_hello[2] <= 0x03)
-    tls = true;
+    encrypted = true;
   else if (*tls_hello >= 'A' && *tls_hello <= 'Z')
-    tls = false;
+    encrypted = false;
   else
   {
     err("verify_client_hello", "Malformed Request");
     goto error;
   }
 
-  if (tls)
+  if (encrypted)
   {
     if (!config.client_https)
     {
@@ -107,7 +107,6 @@ void peek_client(Connection *conn)
   return;
 
 error:
-  conn->status = 500;
   conn->state = CLOSE_CONN;
 }
 

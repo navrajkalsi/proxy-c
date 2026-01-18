@@ -225,6 +225,7 @@ bool start_proxy(void)
       assert(conn);
 
     again:
+      log_state(conn->state);
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
@@ -237,9 +238,9 @@ bool start_proxy(void)
         conn->state = STATE_TIMEDOUT;
       }
 
-      else if (conn->state == TLS_CLIENT && events & EPOLLIN)
+      else if (conn->state == PEEK_CLIENT && events & EPOLLIN)
       {
-        verify_client_protocol(conn);
+        peek_client(conn);
         if (conn->state == READ_REQUEST)
           goto again; // the peeked data needs to be drained before handling state
       }
@@ -304,9 +305,24 @@ again:
     err_n_exit("verify_state", "Cannot accept client in handle_state. Logic error");
     break;
 
-  case TLS_CLIENT:
-    err_n_exit("verify_state", "No purpose tls_client in handler loop. Logic error");
+  case PEEK_CLIENT:
+    err_n_exit("verify_state", "Cannot peek client in handle_state. Logic error");
     break;
+
+  case TLS_CLIENT:
+    assert(config.client_https); // only get here if the peeked data is encrypted
+    if (!setup_endpoint_tls(conn, &conn->upstream))
+    {
+      err("setup_endpoint_tls", NULL);
+      conn->state = CLOSE_CONN;
+    }
+    else
+    {
+      conn->state = READ_REQUEST;
+      arm_state_tfd(conn->state_tfd, conn->state, 0);
+      read_request(conn); // read what's in the buffer before waiting again
+    }
+    goto again;
 
   case READ_REQUEST:
     mod_in_epoll(conn, *client_fd, READ_FLAGS);

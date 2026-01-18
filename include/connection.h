@@ -18,6 +18,8 @@ typedef enum
   READ_RESPONSE,
   WRITE_RESPONSE,
   CHECK_CONN,
+  SSL_READ,  // if ssl errors with SSL_ERROR_WANT_READ
+  SSL_WRITE, // if ssl errors with SSL_ERROR_WANT_WRITE
   CONN_TIMEDOUT,
   STATE_TIMEDOUT,
   CLOSE_CONN

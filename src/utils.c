@@ -122,7 +122,9 @@ const char *get_state_string(int state)
   switch (state)
   {
   case ACCEPT_CLIENT:
-    return "accept conn";
+    return "accept_client";
+  case PEEK_CLIENT:
+    return "peek_client";
   case TLS_CLIENT:
     return "tls_client";
   case READ_REQUEST:
@@ -141,6 +143,10 @@ const char *get_state_string(int state)
     return "write_response";
   case CHECK_CONN:
     return "check_conn";
+  case SSL_READ:
+    return "ssl_read";
+  case SSL_WRITE:
+    return "ssl_write";
   case CONN_TIMEDOUT:
     return "conn_timedout";
   case STATE_TIMEDOUT:
