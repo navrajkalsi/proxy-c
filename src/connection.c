@@ -272,6 +272,7 @@ void print_endpoint(const Endpoint *endpoint)
 void setup_endpoint_tls(Connection *conn, Endpoint *endpoint)
 {
   assert(conn && endpoint);
+  assert(conn->state == TLS_CLIENT || conn->state == TLS_UPSTREAM);
   if (config.client_https)
     assert(client_ssl_ctx);
   if (config.upstream_https)

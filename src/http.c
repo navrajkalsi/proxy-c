@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include "connection.h"
-#include "http.h"
 #include "proxy.h"
 #include "str.h"
 #include "utils.h"

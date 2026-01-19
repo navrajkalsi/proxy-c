@@ -182,7 +182,11 @@ void read_request(Connection *conn)
       }
 
       if (!client->to_read)
+      {
+        if (client->read_index > client->head.len)
+          client->next_index = client->head.len;
         goto upstream;
+      }
     }
     else if (client->content_len)
     {

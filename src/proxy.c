@@ -262,26 +262,33 @@ bool start_proxy(void)
         switch (conn->prev_state)
         {
         case TLS_CLIENT:
+          conn->state = TLS_CLIENT;
           setup_endpoint_tls(conn, &conn->client);
           break;
         case TLS_UPSTREAM:
+          conn->state = TLS_UPSTREAM;
           setup_endpoint_tls(conn, &conn->upstream);
           break;
         case READ_REQUEST:
+          conn->state = READ_REQUEST;
           read_request(conn);
           break;
         case WRITE_REQUEST:
+          conn->state = WRITE_REQUEST;
           write_request(conn);
           break;
         case READ_RESPONSE:
+          conn->state = READ_RESPONSE;
           read_response(conn);
           break;
         case WRITE_RESPONSE:
+          conn->state = WRITE_RESPONSE;
           write_response(conn);
           break;
         default:
           printf("Unexpected previous state for %s: %s\n",
-                 conn->state == SSL_READ ? "ssl_read" : "ssl_write", get_state_string(conn->state));
+                 conn->state == SSL_READ ? "ssl_read" : "ssl_write",
+                 get_state_string(conn->prev_state));
           assert(false);
         }
       }
