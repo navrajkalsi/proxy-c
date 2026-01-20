@@ -158,9 +158,22 @@ const char *get_state_string(int state)
   }
 }
 
-void log_state(int state)
+int get_active_conn_index(const Connection *conn)
 {
-  puts(get_state_string(state));
+  assert(conn);
+
+  for (int i = 0; i < active_conns_num; i++)
+    if (active_conns[i] == conn)
+      return ++i;
+
+  return 0;
+}
+
+void log_state(const char *point_of_call, const Connection *conn)
+{
+  assert(conn);
+  printf("(%d) " BOLD_BLUE "%s" RESET ": %s\n", get_active_conn_index(conn),
+         get_state_string(conn->state), point_of_call ? point_of_call : "NULL");
 }
 
 void log_ssl_error(int ssl_get_error_ret)

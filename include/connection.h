@@ -124,3 +124,5 @@ void setup_endpoint_tls(Connection *conn, Endpoint *endpoint);
 
 // uses clients buffer to piece together the redirect
 Str get_redirect_location(Connection *conn);
+
+extern int active_conns_num;

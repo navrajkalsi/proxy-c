@@ -227,7 +227,7 @@ bool start_proxy(void)
       Connection *conn = epoll_events[i].data.ptr;
       assert(conn);
 
-      // log_state(conn->state);
+      // log_state("start_proxy", conn);
       if (conn->state == ACCEPT_CLIENT) // new client
         accept_client();
 
@@ -335,7 +335,7 @@ again:
   if (!RUNNING) // if sigint during loop
     return;
 
-  // log_state(conn->state);
+  // log_state("handle_state", conn);
   // when handle_state returns, conn.state should be one that start_proxy loop can handle
   switch (conn->state)
   {

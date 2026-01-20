@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 
+#include "connection.h"
 #include "str.h"
 
 // Always returns false
@@ -33,7 +34,10 @@ void int_to_string(int num, char *out);
 
 const char *get_state_string(int state);
 
-void log_state(int state);
+// returns 0 on error
+int get_active_conn_index(const Connection *conn);
+
+void log_state(const char *point_of_call, const Connection *conn);
 
 void log_ssl_error(int ssl_get_error_ret);
 
