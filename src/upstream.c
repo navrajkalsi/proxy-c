@@ -177,7 +177,7 @@ void read_response(Connection *conn)
 
       if (extra)
       {
-        upstream->next_index = upstream->head.len + (ptrdiff_t)upstream->to_read;
+        upstream->next_index = (ptrdiff_t)upstream->to_read;
         upstream->to_read = 0;
       }
       else
