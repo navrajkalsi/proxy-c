@@ -25,21 +25,20 @@ CFLAGS ?= -Wall -Werror -Wextra -Wconversion -Iinclude -g -o2
 # CFLAGS ?= -Wall -Werror -Wextra -Wconversion -g -fsanitize=address,undefined -Iinclude
 LDFLAGS ?= -lssl -lcrypto
 
-ifdef DEFAULT_PORT
-	CFLAGS += -DDEFAULT_PORT="\"$(DEFAULT_PORT)\""
+ifdef DEFAULT_LISTEN_PORT
+	CFLAGS += -DDEFAULT_LISTEN_PORT="\"$(DEFAULT_LISTEN_PORT)\""
 endif
 ifdef DEFAULT_CANONICAL_HOST
 	CFLAGS += -DDEFAULT_CANONICAL_HOST="\"$(DEFAULT_CANONICAL_HOST)\""
 endif
-ifdef DEFAULT_UPSTREAM
-	CFLAGS += -DDEFAULT_UPSTREAM="\"$(DEFAULT_UPSTREAM)\""
+ifdef DEFAULT_UPSTREAM_HOST
+	CFLAGS += -DDEFAULT_UPSTREAM_HOST="\"$(DEFAULT_UPSTREAM_HOST)\""
 endif
 # custom domain certificate & private key
 # TO BE PASSED WHILE COMPILATION!
 ifdef DOMAIN_CERT
 	CFLAGS += -DDOMAIN_CERT="\"$(DOMAIN_CERT)\""
 endif
-
 ifdef PRIVATE_KEY
 	CFLAGS += -DPRIVATE_KEY="\"$(PRIVATE_KEY)\""
 endif
