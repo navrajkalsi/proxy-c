@@ -38,6 +38,39 @@ This is where the idea for a reverse proxy originated, which was in some cases m
 
 <br>
 
+## Restrictions
+
+- **Backlog** of **25** is allowed for `listen()`, after which requests will be rejected
+  automatically.
+- **Max number of events** returned by `epoll_wait()` is set to **32**.
+- **Max number of active connections** is set to **256**.
+- **Buffer size** used for requests and responses is **8192 bytes**.
+- **Max size for headers** is also equals to `BUFFER_SIZE`, ie, **8192 bytes**.
+- **Max size for chunk header** is set to **18 bytes**, which includes 2 bytes for `CRLF` and rest
+  16 bytes for the actual size.
+- **Max size of request target** is set to **half of BUFFER_SIZE**, which includes the path along
+  with any parameteres or fragments.
+- **Max content length** for bodies is set to **10 megabytes**.
+
+<br>
+
+## Limitations
+
+- Only **GET** method is supported for request, rest of the requests receive a **405 Method Not
+  Allowed**.
+- Only **origin form** is supported for [request
+  targets](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Messages#request_targets).
+- Only **HTTP/1.0 & HTTP/1.1** are supported, rest of the version receive a **505 HTTP Version Not
+  Supported**.
+- **Keep-alive header** is not parsed for custom timeout durations, although **keep-alive
+  connections** are supported.
+- **Request and response bodies** exceeding 10 megabytes are rejected and receive a **413 Content
+  Too Large**.
+- **Chunked** is the only directive supported for
+  [**Transfer-Encoding**](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Transfer-Encoding),
+  other values receive a **501 Not Implemented** response.
+- **Extensions** in `chunk headers` is not supported and using those will result in **501 Not Implemented**.
+
 ## Quick Start
 
 **THIS PROXY SERVER ONLY SUPPORTS LINUX SYSTEMS.**
