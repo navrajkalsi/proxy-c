@@ -52,7 +52,8 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
   if (!cut.head.len)
   {
     conn->status = client ? 400 : 502;
-    return err("check_sect_len", "First section is found to be NULL");
+    return err("check_first_len",
+               client ? "Request Line found to be empty" : "Response Line found to be empty");
   }
 
   // deal with first line, depending on the endpoint type
@@ -108,7 +109,8 @@ bool parse_head(Connection *conn, Endpoint *endpoint)
 
 bool parse_request_line(Connection *conn, Str line)
 {
-  assert(conn && line.len);
+  assert(conn);
+  assert(line.len);
 
   // request method
   Cut cut = cut_char(line, ' ');
