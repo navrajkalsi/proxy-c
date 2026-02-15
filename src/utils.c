@@ -278,10 +278,7 @@ bool str_to_size_hex(Str str, ptrdiff_t *num)
     else if (d >= 'A' && d <= 'F')
       d = (uint8_t)(d - 'A') + 10;
     else
-    {
-      printf("%d: %c\n", d, d);
       return err("verify_char", "Invalid character detected");
-    }
 
     if (r > (PTRDIFF_MAX - d) / 16)
       return err("check_overflow", "Overflow detected");
