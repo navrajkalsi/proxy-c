@@ -62,6 +62,6 @@ bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint);
 
 void print_request(const Connection *conn);
 
-char *get_status_string(uint status);
+char *get_status_string(unsigned status);
 
-Str get_status_str(uint status);
+Str get_status_str(unsigned status);

@@ -193,7 +193,7 @@ void add_to_epoll(Connection *conn, int fd, int flags)
 
   // this struct does not need to be on the heap
   // kernel copies all the data into the epoll table
-  struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
+  struct epoll_event epoll_event = {.events = (unsigned)flags, .data.ptr = (void *)conn};
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_ADD, fd, &epoll_event) == -1)
     err_n_exit("epoll_ctl_add", strerror(errno));
@@ -203,7 +203,7 @@ void mod_in_epoll(Connection *conn, int fd, int flags)
 {
   assert(fd >= 0);
 
-  struct epoll_event epoll_event = {.events = (uint)flags, .data.ptr = (void *)conn};
+  struct epoll_event epoll_event = {.events = (unsigned)flags, .data.ptr = (void *)conn};
 
   if (epoll_ctl(EPOLL_FD, EPOLL_CTL_MOD, fd, &epoll_event) == -1)
     err_n_exit("epoll_ctl_mod", strerror(errno));
@@ -351,16 +351,17 @@ Str get_redirect_location(Connection *conn)
   // so the location will definitely fit inside BUFFER_SIZE of client buffer
 
   // target is inside the client buffer, localize it and then alter client buffer
-  char local[conn->target.len];
+  assert(conn->target.len <= (ptrdiff_t)MAX_REQUEST_TARGET);
+  char local[MAX_REQUEST_TARGET] = {0};
   Str target_local = {.data = local, .len = conn->target.len};
   memcpy(target_local.data, conn->target.data, (size_t)target_local.len);
 
   Str location[] = {config.client_https ? HTTPS : HTTP, STR("://"), config.canonical_host.unparsed,
                     target_local}, // path must be in origin form(begins with /)
       ret = {.data = conn->client.buffer, .len = 0};
-  uint num = sizeof location / sizeof(Str);
+  unsigned num = sizeof location / sizeof(Str);
 
-  for (uint i = 0; i < num; i++)
+  for (unsigned i = 0; i < num; i++)
   {
     // only path can cause overflow, but it would have been rejected during parse_request_line
     assert(ret.len + location[i].len <= (ptrdiff_t)BUFFER_SIZE);

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <netdb.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "bits.h"
@@ -137,7 +138,8 @@ bool validate_protocol(Str protocol)
 
 bool validate_host(Str host)
 {
-  char string[host.len + 1]; // null terminated hostname
+  assert(host.len <= (ptrdiff_t)MAX_HOST_SIZE);
+  char string[MAX_HOST_SIZE + 1]; // null terminated hostname
   memcpy(string, host.data, (size_t)host.len);
   string[host.len] = '\0';
 
@@ -154,10 +156,10 @@ bool validate_port(Str port, long *port_out)
 {
   assert(port.len);
 
-  long port_num = -1;
+  ptrdiff_t port_num = -1;
 
-  if (!str_to_long(port, &port_num))
-    return err("str_to_long", NULL);
+  if (!str_to_size(port, &port_num))
+    return err("str_to_size", NULL);
 
   if (port_num < 0 || port_num > 65535)
     return err("verify_port", "Port is out of range");

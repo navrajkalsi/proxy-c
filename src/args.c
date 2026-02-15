@@ -33,6 +33,10 @@ void parse_args(int argc, char *argv[])
         err_n_exit("verify_url", "Canonical Host should only contain host and port(optional)");
 
       extract_host(&url, &config.canonical_host);
+
+      if (config.canonical_host.host.len > (ptrdiff_t)MAX_HOST_SIZE)
+        err_n_exit("verify_host_len", "Canonical Host supplied is too long.");
+
       args_parsed++;
       break;
     case 'h':
@@ -65,6 +69,10 @@ void parse_args(int argc, char *argv[])
         err_n_exit("verify_url", "Upstream Host should only contain host and port(optional)");
 
       extract_host(&url, &config.upstream_host);
+
+      if (config.canonical_host.host.len > (ptrdiff_t)MAX_HOST_SIZE)
+        err_n_exit("verify_host_len", "Upstream Host supplied is too long.");
+
       args_parsed++;
       break;
     case 'v':
@@ -105,6 +113,9 @@ void parse_args(int argc, char *argv[])
                  "Default Canonical Host should only contain host and port number(optional)");
 
     extract_host(&url, &config.canonical_host);
+
+    if (config.canonical_host.host.len > (ptrdiff_t)MAX_HOST_SIZE)
+      err_n_exit("verify_host_len", "Default Canonical Host is too long.");
   }
 
   if (!config.upstream_host.host.len)
@@ -119,6 +130,9 @@ void parse_args(int argc, char *argv[])
                  "Default Upstream Host should only contain host and port number(optional)");
 
     extract_host(&url, &config.upstream_host);
+
+    if (config.canonical_host.host.len > (ptrdiff_t)MAX_HOST_SIZE)
+      err_n_exit("verify_host_len", "Default Upstream Host is too long.");
   }
 
   if (!config.listen_port.len)

@@ -67,7 +67,7 @@ typedef struct connection
   State prev_state; // state conn was in right before current state, used in timeouts and ssl errors
   int conn_tfd;     // full conn timeout, also use for keep-alive
   int state_tfd;    // timeout for individual read/write states
-  uint status;      // http status code
+  unsigned status;  // http status code
   bool complete;    // full response received and sent
   bool keep_alive;
 } Connection;

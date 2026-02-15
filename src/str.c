@@ -71,7 +71,7 @@ Cut cut_str(Str str, Str sep)
 
 bool equals(Str a, Str b)
 {
-  return a.len == b.len && !memcmp(a.data, b.data, (size_t)a.len);
+  return a.len == b.len && (!a.len || !memcmp(a.data, b.data, (size_t)a.len));
 }
 
 char case_fold_char(char c)

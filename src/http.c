@@ -252,11 +252,11 @@ bool verify_headers(Connection *conn, Endpoint *endpoint)
 
   if (headers->content_length.len)
   {
-    long content_len = -1;
-    if (!str_to_long(headers->content_length, &content_len))
+    ptrdiff_t content_len = -1;
+    if (!str_to_size(headers->content_length, &content_len))
     {
       conn->status = client ? 400 : 502;
-      return err("str_to_long", "Invalid Content Length");
+      return err("str_to_size", "Invalid Content Length");
     }
 
     if (content_len < 0)
@@ -321,6 +321,10 @@ bool check_body(Connection *conn, Endpoint *endpoint)
   {
     Str body = {.data = endpoint->buffer + endpoint->head.len,
                 .len = endpoint->read_index - endpoint->head.len};
+
+    // return back to read function and read more
+    if (!body.len)
+      return true;
 
     if (!handle_chunked(body, conn, endpoint))
       return err("handle_chunked", NULL);
@@ -551,11 +555,11 @@ bool extract_chunk_size(Str head, Connection *conn, Endpoint *endpoint)
     return err("contains", "Extensions detected in chunk head");
   }
 
-  long size = -1;
-  if (!str_to_long_hex(head, &size))
+  ptrdiff_t size = -1;
+  if (!str_to_size_hex(head, &size))
   {
     conn->status = client ? 400 : 502;
-    return err("str_to_long_hex", NULL);
+    return err("str_to_size_hex", NULL);
   }
 
   // ready to read chunk
@@ -590,7 +594,7 @@ void print_request(const Connection *conn)
   putchar('\n');
 }
 
-char *get_status_string(uint status)
+char *get_status_string(unsigned status)
 {
   // these strings live for the entire life of the program
   switch (status)
@@ -630,7 +634,7 @@ char *get_status_string(uint status)
   assert(false);
 }
 
-Str get_status_str(uint status)
+Str get_status_str(unsigned status)
 {
   return WRAP_STR(get_status_string(status));
 }

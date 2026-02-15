@@ -106,7 +106,8 @@ bool setup_proxy(void)
   hints.ai_flags = AI_PASSIVE;
 
   // null terminated port
-  char port_str[config.listen_port.len + 1];
+  assert(config.listen_port.len <= 5);
+  char port_str[6];
   memcpy(port_str, config.listen_port.data, (size_t)config.listen_port.len);
   port_str[config.listen_port.len] = '\0';
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "connection.h"
 #include "str.h"
@@ -41,8 +42,9 @@ void log_state(const char *point_of_call, const Connection *conn);
 
 void log_ssl_error(int ssl_get_error_ret);
 
-bool str_to_long(Str str, long *num);
+bool str_to_size(Str str, ptrdiff_t *num);
 
-bool str_to_long_hex(Str str, long *num);
+// requires the hex number to be prefixed
+bool str_to_size_hex(Str str, ptrdiff_t *num);
 
 bool set_date_str(Str date);

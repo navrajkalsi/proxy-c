@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <openssl/ssl.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include "connection.h"
@@ -16,9 +17,9 @@ static struct addrinfo *upstream_addrinfo = NULL;
 bool setup_upstream(void)
 {
   Str host = config.upstream_host.host, port = config.upstream_host.port;
-  char host_local[host.len + 1], port_local[6];
+  char host_local[MAX_HOST_SIZE + 1], port_local[6];
 
-  assert(host.len);
+  assert(host.len && host.len <= (ptrdiff_t)MAX_HOST_SIZE);
 
   // null terminate host
   memcpy(host_local, host.data, (size_t)host.len);
@@ -170,6 +171,9 @@ void read_response(Connection *conn)
       // no content len or encoding was specified or full response read
       if (!upstream->to_read)
         goto complete;
+
+      break; // write the buffer, as the chunked else if branch expects the chunk to begin from the
+             // starting of the buffer
     }
     else if (upstream->content_len)
     { // bytes left from content len
@@ -189,6 +193,7 @@ void read_response(Connection *conn)
     else if (upstream->chunked)
     { // checking for last chunk, was not received during parse_head()
       Str body = {upstream->buffer, upstream->read_index};
+
       if (!handle_chunked(body, conn, upstream))
       {
         err("handle_chunked", NULL);
@@ -303,16 +308,16 @@ bool generate_error_response(Connection *conn)
 
   size_t body_elms = sizeof response_body / sizeof(Str), body_size = 0;
 
-  for (uint i = 0; i < body_elms; ++i)
+  for (unsigned i = 0; i < body_elms; ++i)
     body_size += (size_t)response_body[i].len;
-  assert(body_size);
 
   // calculating number of chars required to hold the final length, will mostly be 3
-  uint divisor = 1, num_of_digits = 0;
+  unsigned divisor = 1, num_of_digits = 0;
   while (body_size / divisor > 0 && ++num_of_digits)
     divisor *= 10;
 
-  char content_len_data[num_of_digits];
+  assert(num_of_digits <= 3);
+  char content_len_data[3];
   memset(content_len_data, 0, num_of_digits);
 
   int_to_string((int)body_size, content_len_data);
@@ -337,7 +342,7 @@ bool generate_error_response(Connection *conn)
 
   // collecting all response in upstream_buffer
   size_t header_elms = sizeof response_headers / sizeof(Str), headers_size = 0;
-  for (uint i = 0; i < header_elms; ++i)
+  for (unsigned i = 0; i < header_elms; ++i)
     headers_size += (size_t)response_headers[i].len;
 
   if (headers_size + body_size > BUFFER_SIZE)
@@ -345,7 +350,7 @@ bool generate_error_response(Connection *conn)
 
   ptrdiff_t buf_ptr = 0;
 
-  for (uint i = 0; i < header_elms; ++i)
+  for (unsigned i = 0; i < header_elms; ++i)
   {
     if (!response_headers[i].len) // skip if NULL_STR
       continue;
@@ -353,7 +358,7 @@ bool generate_error_response(Connection *conn)
     memcpy(upstream->buffer + buf_ptr, response_headers[i].data, (size_t)response_headers[i].len);
     buf_ptr += response_headers[i].len;
   }
-  for (uint i = 0; i < body_elms; ++i)
+  for (unsigned i = 0; i < body_elms; ++i)
   {
     memcpy(upstream->buffer + buf_ptr, response_body[i].data, (size_t)response_body[i].len);
     buf_ptr += response_body[i].len;

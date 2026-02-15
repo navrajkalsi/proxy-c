@@ -55,3 +55,20 @@
 
 - Custom Timeout Implementation.
 - Regex Validation for URLs.
+
+## [2.1]
+
+### Changed
+
+- **VLA** used for `get_redirect_location()` has been changed to a constant length array, whose size
+  is set to **MAX_REQUEST_TARGET**.
+- **VLA** used in `setup_upstream()` for hostname has been changed to a constant length array, whose
+  size is set to **MAX_HOST_SIZE**.
+- **str to number** conversions do not use `strtol()` from the standard library now.
+
+### Fixed
+
+- **Chunked** handling was passed 0 length body during `check_body()` function calls when no body
+  was received along with the head.
+- **Str equals** bug which compared 0 length char arrays, which lead to errors during `memcmp()`.
+- **Upstream chunked** bug that resulted in the program try to parse the head of the response, where the program expected beginning of a new chunk.

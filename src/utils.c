@@ -1,11 +1,14 @@
 #include <assert.h>
 #include <openssl/ssl.h>
 #include <signal.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "connection.h"
 #include "proxy.h"
+#include "str.h"
 #include "utils.h"
 
 bool err(const char *function, const char *error)
@@ -219,56 +222,74 @@ void log_ssl_error(int ssl_get_error_ret)
   }
 }
 
-bool str_to_long(Str str, long *num)
+// thanks to u/skeeto for all the help
+bool str_to_size(Str str, ptrdiff_t *num)
 {
-  assert(str.len);
   assert(num);
 
-  if (str.len > 64)
-    return err("verify_str_len", "Potential number longer than long");
+  if (!str.len)
+    return err("verify_str_len", "Empty str passed");
 
-  char local[str.len + 1], *end = NULL;
-  memcpy(local, str.data, (size_t)str.len);
-  local[str.len] = '\0';
-  errno = 0;
+  ptrdiff_t r = 0;
 
-  *num = strtol(local, &end, 10);
+  for (ptrdiff_t i = 0; i < str.len; i++)
+  {
+    uint8_t d = (uint8_t)str.data[i] - '0';
 
-  if (errno == ERANGE)
-    return err("strtol", "Overflow detected");
+    if (d > 9) // no need to check for < 0 as the result of subtraction wraps
+      return err("check_digit", "Invalid digit detected");
 
-  if (end == local) // comparing pointers
-    return err("strtol", "No conversion performed");
+    if (r > (PTRDIFF_MAX - d) / 10)
+      return err("check_overflow", "Overflow detected");
 
-  if (*end != '\0')
-    return err("strtol", "Supplied str is not a decimal number");
+    r = r * 10 + d;
+  }
+
+  *num = r;
 
   return true;
 }
 
-bool str_to_long_hex(Str str, long *num)
+bool str_to_size_hex(Str str, ptrdiff_t *num)
 {
-  assert(str.len);
   assert(num);
 
-  if (str.len > 64)
-    return err("verify_str_len", "Potential number longer than long");
+  if (str.len > 2)
+  {
+    if (*str.data != '0' || (str.data[1] != 'x' && str.data[1] != 'X'))
+      warn("verify_prefix", "Prefix not detected for hex");
+    else
+    {
+      str.len -= 2;
+      str.data += 2;
+    }
+  }
 
-  char local[str.len + 1], *end = NULL;
-  memcpy(local, str.data, (size_t)str.len);
-  local[str.len] = '\0';
-  errno = 0;
+  ptrdiff_t r = 0;
 
-  *num = strtol(local, &end, 16);
+  for (ptrdiff_t i = 0; i < str.len; i++)
+  {
+    uint8_t d = (uint8_t)str.data[i];
 
-  if (errno == ERANGE)
-    return err("strtol", "Overflow detected");
+    if (d >= '0' && d <= '9')
+      d -= '0';
+    else if (d >= 'a' && d <= 'f')
+      d = (uint8_t)(d - 'a') + 10;
+    else if (d >= 'A' && d <= 'F')
+      d = (uint8_t)(d - 'A') + 10;
+    else
+    {
+      printf("%d: %c\n", d, d);
+      return err("verify_char", "Invalid character detected");
+    }
 
-  if (end == local) // comparing pointers
-    return err("strtol", "No conversion performed");
+    if (r > (PTRDIFF_MAX - d) / 16)
+      return err("check_overflow", "Overflow detected");
 
-  if (*end != '\0')
-    return err("strtol", "Supplied str is not a hex number");
+    r = r * 16 + d;
+  }
+
+  *num = r;
 
   return true;
 }
