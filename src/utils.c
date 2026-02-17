@@ -255,6 +255,9 @@ bool str_to_size_hex(Str str, ptrdiff_t *num)
 {
   assert(num);
 
+  if (!str.len)
+    return err("verify_str_len", "Empty str passed");
+
   ptrdiff_t r = 0;
 
   for (ptrdiff_t i = 0; i < str.len; i++)
