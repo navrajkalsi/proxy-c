@@ -250,20 +250,10 @@ bool str_to_size(Str str, ptrdiff_t *num)
   return true;
 }
 
+// this function does not check for prefix '0x(X)' and WILL ERROR if str contains it
 bool str_to_size_hex(Str str, ptrdiff_t *num)
 {
   assert(num);
-
-  if (str.len > 2)
-  {
-    if (*str.data != '0' || (str.data[1] != 'x' && str.data[1] != 'X'))
-      warn("verify_prefix", "Prefix not detected for hex");
-    else
-    {
-      str.len -= 2;
-      str.data += 2;
-    }
-  }
 
   ptrdiff_t r = 0;
 
